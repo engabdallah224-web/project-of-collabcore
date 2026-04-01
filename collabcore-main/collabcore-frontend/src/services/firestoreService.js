@@ -14,13 +14,12 @@ import {
   orderBy,
   limit,
   addDoc,
-  updateDoc,
-  serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
 const PROJECTS_COLLECTION = 'projects';
 const USERS_COLLECTION = 'users';
+const MESSAGES_COLLECTION = 'messages';
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 
@@ -89,6 +88,78 @@ export const fetchMyCollaboratingProjects = async (uid) => {
   return snapshot.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((p) => p.owner_id !== uid);
+};
+
+/**
+ * Fetch a single project by id.
+ */
+export const fetchProjectById = async (projectId) => {
+  const snap = await getDoc(doc(db, PROJECTS_COLLECTION, projectId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+};
+
+/**
+ * Fetch project chat messages directly from Firestore.
+ */
+export const fetchProjectMessages = async (projectId, limitCount = 100) => {
+  try {
+    const q = query(
+      collection(db, MESSAGES_COLLECTION),
+      where('project_id', '==', projectId),
+      orderBy('created_at', 'desc'),
+      limit(limitCount)
+    );
+    const snapshot = await getDocs(q);
+    const messages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return messages.reverse();
+  } catch {
+    // Fallback when composite index/orderBy is missing.
+    const snapshot = await getDocs(collection(db, MESSAGES_COLLECTION));
+    const messages = snapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((m) => m.project_id === projectId)
+      .sort((a, b) => ((a.created_at || '') > (b.created_at || '') ? 1 : -1));
+    return messages.slice(-limitCount);
+  }
+};
+
+/**
+ * Send a chat message directly to Firestore.
+ */
+export const sendProjectMessageDirect = async ({
+  projectId,
+  content,
+  message_type = 'text',
+  file_url = null,
+  file_name = null,
+}) => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Not authenticated');
+  }
+
+  const sender = await fetchUserProfile(uid);
+  const messageDoc = {
+    project_id: projectId,
+    sender_id: uid,
+    content,
+    message_type,
+    file_url,
+    file_name,
+    reply_to: null,
+    is_edited: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    sender: {
+      uid,
+      full_name: sender?.full_name || sender?.email || 'User',
+      avatar_url: sender?.avatar_url || null,
+    },
+  };
+
+  const ref = await addDoc(collection(db, MESSAGES_COLLECTION), messageDoc);
+  return { id: ref.id, ...messageDoc };
 };
 
 // ─── User profile ─────────────────────────────────────────────────────────────

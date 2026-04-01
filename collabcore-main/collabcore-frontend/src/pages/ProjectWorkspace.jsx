@@ -4,6 +4,13 @@ import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectAPI, authAPI, messageAPI, uploadAPI } from '../services/api';
+import { auth } from '../config/firebase';
+import {
+  fetchProjectById,
+  fetchUserProfile,
+  fetchProjectMessages,
+  sendProjectMessageDirect,
+} from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
 import RepositoryPanel from '../components/vcs/RepositoryPanel';
@@ -35,8 +42,15 @@ const ProjectWorkspace = () => {
   const { data: projectData, isLoading: projectLoading } = useQuery({
     queryKey: ['project', projectId],
     queryFn: async () => {
-      const response = await projectAPI.getProject(projectId);
-      return response.data.project;
+      try {
+        const response = await projectAPI.getProject(projectId);
+        return response.data.project;
+      } catch (error) {
+        if (!error.response) {
+          return await fetchProjectById(projectId);
+        }
+        throw error;
+      }
     },
     enabled: !!projectId
   });
@@ -45,8 +59,15 @@ const ProjectWorkspace = () => {
   const { data: userData } = useQuery({
     queryKey: ['current-user'],
     queryFn: async () => {
-      const response = await authAPI.getMe();
-      return response.data.user;
+      try {
+        const response = await authAPI.getMe();
+        return response.data.user;
+      } catch (error) {
+        if (!error.response) {
+          return await fetchUserProfile(auth.currentUser?.uid || null);
+        }
+        throw error;
+      }
     }
   });
 
@@ -83,8 +104,15 @@ const ProjectWorkspace = () => {
   const { data: messagesData, isLoading: messagesLoading } = useQuery({
     queryKey: ['project-messages', projectId],
     queryFn: async () => {
-      const response = await messageAPI.getMessages(projectId, { limit: 100 });
-      return response.data.messages;
+      try {
+        const response = await messageAPI.getMessages(projectId, { limit: 100 });
+        return response.data.messages;
+      } catch (error) {
+        if (!error.response) {
+          return await fetchProjectMessages(projectId, 100);
+        }
+        throw error;
+      }
     },
     enabled: !!projectId,
     refetchInterval: 5000
@@ -93,14 +121,27 @@ const ProjectWorkspace = () => {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData) => {
-      const response = await messageAPI.sendMessage(projectId, {
-        project_id: projectId,
-        content: messageData.content,
-        message_type: messageData.message_type || 'text',
-        file_url: messageData.file_url || null,
-        file_name: messageData.file_name || null
-      });
-      return response.data.message;
+      try {
+        const response = await messageAPI.sendMessage(projectId, {
+          project_id: projectId,
+          content: messageData.content,
+          message_type: messageData.message_type || 'text',
+          file_url: messageData.file_url || null,
+          file_name: messageData.file_name || null
+        });
+        return response.data.message;
+      } catch (error) {
+        if (!error.response) {
+          return await sendProjectMessageDirect({
+            projectId,
+            content: messageData.content,
+            message_type: messageData.message_type || 'text',
+            file_url: messageData.file_url || null,
+            file_name: messageData.file_name || null,
+          });
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['project-messages', projectId]);
