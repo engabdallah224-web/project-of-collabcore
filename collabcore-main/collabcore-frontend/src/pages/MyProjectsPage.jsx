@@ -15,7 +15,7 @@ const MyProjectsPage = () => {
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'name', 'progress'
 
   // Fetch leading projects
-  const { data: leadingProjects = [], isLoading: leadingLoading } = useQuery({
+  const { data: leadingProjects = [], isLoading: leadingLoading, error: leadingError } = useQuery({
     queryKey: ['my-leading-projects'],
     queryFn: () => fetchMyLeadingProjects(user?.uid),
     enabled: !!user?.uid,
@@ -24,7 +24,7 @@ const MyProjectsPage = () => {
   });
 
   // Fetch collaborating projects
-  const { data: collaboratingProjects = [], isLoading: collaboratingLoading } = useQuery({
+  const { data: collaboratingProjects = [], isLoading: collaboratingLoading, error: collaboratingError } = useQuery({
     queryKey: ['my-collaborating-projects'],
     queryFn: () => fetchMyCollaboratingProjects(user?.uid),
     enabled: !!user?.uid,
@@ -33,6 +33,7 @@ const MyProjectsPage = () => {
   });
 
   const isLoading = activeTab === 'leading' ? leadingLoading : collaboratingLoading;
+  const error = activeTab === 'leading' ? leadingError : collaboratingError;
 
   if (isLoading) {
     return (
