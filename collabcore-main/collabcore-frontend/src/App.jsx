@@ -20,6 +20,7 @@ import TasksPage from './pages/TasksPage';
 import MeetingAnalyticsPage from './pages/MeetingAnalyticsPage';
 import ProjectSettingsPage from './pages/ProjectSettingsPage';
 import ProjectDetailsPage from './pages/ProjectDetailsPage';
+import NotificationsPage from './pages/NotificationsPage';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -155,10 +156,7 @@ function App() {
                   path="/notifications"
                   element={
                     <ProtectedRoute>
-                      <div className="container mx-auto px-4 py-8">
-                        <h1 className="text-3xl font-bold">Notifications</h1>
-                        <p className="text-gray-600 mt-2">Coming soon...</p>
-                      </div>
+                      <NotificationsPage />
                     </ProtectedRoute>
                   }
                 />

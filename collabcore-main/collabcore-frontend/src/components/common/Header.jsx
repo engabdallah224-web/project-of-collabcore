@@ -2,11 +2,21 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, LogOut, User, Bell, Sparkles, Menu, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchUnreadNotificationsCount } from '../../services/firestoreService';
 
 const Header = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const uid = user?.uid || user?.id || null;
+
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['unread-notifications-count', uid],
+    queryFn: () => fetchUnreadNotificationsCount(uid),
+    enabled: !!uid,
+    refetchInterval: 15000,
+  });
 
   const handleLogout = async () => {
     await logout();
@@ -99,15 +109,17 @@ const Header = () => {
                     className="relative p-2 hover:bg-red-900/50 rounded-xl transition-all focus:outline-none"
                   >
                     <Bell className="h-5 w-5 text-white" />
-                    <motion.span 
-                      className="absolute top-1 right-1 bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold shadow-lg"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 500, delay: 0.5 }}
-                      whileHover={{ scale: 1.2 }}
-                    >
-                      3
-                    </motion.span>
+                    {unreadCount > 0 && (
+                      <motion.span 
+                        className="absolute top-1 right-1 bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold shadow-lg"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 500, delay: 0.5 }}
+                        whileHover={{ scale: 1.2 }}
+                      >
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </motion.span>
+                    )}
                   </Link>
                 </motion.div>
 
@@ -212,9 +224,11 @@ const Header = () => {
                     className="flex items-center justify-between px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all"
                   >
                     <span className="font-medium">Notifications</span>
-                    <span className="bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
-                      3
-                    </span>
+                    {unreadCount > 0 && (
+                      <span className="bg-red-600 text-white text-xs rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-semibold">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                   </Link>
                   <Link
                     to="/profile"

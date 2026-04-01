@@ -15,6 +15,7 @@ import {
   limit,
   addDoc,
   onSnapshot,
+  updateDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
@@ -22,6 +23,7 @@ const PROJECTS_COLLECTION = 'projects';
 const USERS_COLLECTION = 'users';
 const APPLICATIONS_COLLECTION = 'applications';
 const MESSAGES_COLLECTION = 'messages';
+const NOTIFICATIONS_COLLECTION = 'notifications';
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 
@@ -320,6 +322,116 @@ export const fetchMeetingsDirect = async (projectId) => {
 export const deleteMeetingDirect = async (meetingId) => {
   const { deleteDoc } = await import('firebase/firestore');
   await deleteDoc(doc(db, MEETINGS_COLLECTION, meetingId));
+};
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+/**
+ * Fetch notifications for a user, newest first.
+ */
+export const fetchNotificationsDirect = async (uid, limitCount = 50) => {
+  if (!uid) return [];
+  try {
+    const q = query(
+      collection(db, NOTIFICATIONS_COLLECTION),
+      where('user_id', '==', uid),
+      orderBy('created_at', 'desc'),
+      limit(limitCount)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch {
+    const snap = await getDocs(collection(db, NOTIFICATIONS_COLLECTION));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((n) => n.user_id === uid)
+      .sort((a, b) => (String(b.created_at) > String(a.created_at) ? 1 : -1))
+      .slice(0, limitCount);
+  }
+};
+
+/**
+ * Real-time notifications listener for a user.
+ */
+export const subscribeToNotifications = (uid, onItems) => {
+  if (!uid) {
+    onItems([]);
+    return () => {};
+  }
+
+  const ref = collection(db, NOTIFICATIONS_COLLECTION);
+  let innerUnsub = null;
+
+  const orderedQ = query(ref, where('user_id', '==', uid), orderBy('created_at', 'desc'));
+  const outerUnsub = onSnapshot(
+    orderedQ,
+    (snap) => {
+      onItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    },
+    () => {
+      const fallbackQ = query(ref, where('user_id', '==', uid));
+      innerUnsub = onSnapshot(fallbackQ, (snap) => {
+        const items = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (String(b.created_at) > String(a.created_at) ? 1 : -1));
+        onItems(items);
+      });
+    }
+  );
+
+  return () => {
+    outerUnsub();
+    if (innerUnsub) innerUnsub();
+  };
+};
+
+/**
+ * Get unread notification count for badge.
+ */
+export const fetchUnreadNotificationsCount = async (uid) => {
+  if (!uid) return 0;
+  try {
+    const q = query(
+      collection(db, NOTIFICATIONS_COLLECTION),
+      where('user_id', '==', uid),
+      where('is_read', '==', false)
+    );
+    const snap = await getDocs(q);
+    return snap.size;
+  } catch {
+    const all = await fetchNotificationsDirect(uid, 200);
+    return all.filter((n) => !n.is_read).length;
+  }
+};
+
+/**
+ * Mark one notification as read.
+ */
+export const markNotificationAsRead = async (notificationId) => {
+  await updateDoc(doc(db, NOTIFICATIONS_COLLECTION, notificationId), {
+    is_read: true,
+    updated_at: new Date().toISOString(),
+  });
+};
+
+/**
+ * Mark all unread notifications as read for a user.
+ */
+export const markAllNotificationsAsRead = async (uid) => {
+  const unreadQ = query(
+    collection(db, NOTIFICATIONS_COLLECTION),
+    where('user_id', '==', uid),
+    where('is_read', '==', false)
+  );
+  const snap = await getDocs(unreadQ);
+  await Promise.all(
+    snap.docs.map((d) =>
+      updateDoc(doc(db, NOTIFICATIONS_COLLECTION, d.id), {
+        is_read: true,
+        updated_at: new Date().toISOString(),
+      })
+    )
+  );
 };
 
 // ─── User profile ─────────────────────────────────────────────────────────────
