@@ -51,11 +51,6 @@ const DiscoveryPage = () => {
 
   // Filter projects based on search and exclude user's own projects
   const filteredProjects = projects.filter((project) => {
-    // Don't show projects owned by current user
-    if (user && project.owner_id === user.uid) {
-      return false;
-    }
-    
     // Apply search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
