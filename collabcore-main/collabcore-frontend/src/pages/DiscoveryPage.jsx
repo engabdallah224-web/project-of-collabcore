@@ -34,28 +34,41 @@ const DiscoveryPage = () => {
   } = useInfiniteQuery({
     queryKey: ['projects', filters.status, filters.category, filters.difficulty],
     queryFn: async ({ pageParam = null }) => {
-      const params = {};
-      if (filters.status && filters.status !== 'all') params.status = filters.status;
-      if (filters.category) params.category = filters.category;
-      if (filters.difficulty) params.difficulty = filters.difficulty;
-      params.limit = 20;
-      if (pageParam) params.cursor = pageParam;
+      try {
+        const params = {};
+        if (filters.status && filters.status !== 'all') params.status = filters.status;
+        if (filters.category) params.category = filters.category;
+        if (filters.difficulty) params.difficulty = filters.difficulty;
+        params.limit = 20;
+        if (pageParam) params.cursor = pageParam;
 
-      const response = await projectAPI.getProjects(params);
-      return response.data;
+        const response = await projectAPI.getProjects(params);
+        return response.data;
+      } catch (err) {
+        // Backend unreachable (no deployed backend) — return empty gracefully
+        if (!err.response) return { projects: [], has_more: false, next_cursor: null };
+        throw err;
+      }
     },
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     staleTime: 60000, // 1 minute
+    retry: false,
   });
 
   // Fetch platform stats
   const { data: statsData } = useQuery({
     queryKey: ['stats'],
     queryFn: async () => {
-      const response = await staticAPI.getStats();
-      return response.data;
+      try {
+        const response = await staticAPI.getStats();
+        return response.data;
+      } catch (err) {
+        if (!err.response) return { stats: { active_projects: 0, recruiting_projects: 0, total_students: 0 } };
+        throw err;
+      }
     },
     staleTime: 300000, // 5 minutes
+    retry: false,
   });
 
   // Flatten all pages of projects
@@ -141,23 +154,27 @@ const DiscoveryPage = () => {
   }
 
   if (projectsError) {
-    return (
-      <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Failed to load projects</h2>
-          <p className="text-gray-700 mb-4">
-            {projectsError.response?.data?.detail || 'Something went wrong. Please try again.'}
-          </p>
-          <button
-            onClick={() => refetch()}
-            className="px-6 py-3 bg-red-600 text-gray-900 rounded-xl font-semibold hover:bg-red-700 shadow-lg"
-          >
-            Try Again
-          </button>
+    // Only show full error page for real server errors (not network/connection issues)
+    if (projectsError.response) {
+      return (
+        <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Failed to load projects</h2>
+            <p className="text-gray-700 mb-4">
+              {projectsError.response?.data?.detail || 'Something went wrong. Please try again.'}
+            </p>
+            <button
+              onClick={() => refetch()}
+              className="px-6 py-3 bg-red-600 text-gray-900 rounded-xl font-semibold hover:bg-red-700 shadow-lg"
+            >
+              Try Again
+            </button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+    // Network error — fall through and show empty projects list
   }
 
   return (

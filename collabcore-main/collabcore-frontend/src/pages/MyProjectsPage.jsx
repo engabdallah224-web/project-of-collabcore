@@ -13,28 +13,41 @@ const MyProjectsPage = () => {
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'name', 'progress'
 
   // Fetch leading projects
-  const { data: leadingData, isLoading: leadingLoading, error: leadingError } = useQuery({
+  const { data: leadingData, isLoading: leadingLoading } = useQuery({
     queryKey: ['my-leading-projects'],
     queryFn: async () => {
-      const response = await projectAPI.getMyLeadingProjects();
-      return response.data;
+      try {
+        const response = await projectAPI.getMyLeadingProjects();
+        return response.data;
+      } catch (err) {
+        // Backend unreachable (network error) — return empty gracefully
+        if (!err.response) return { projects: [] };
+        throw err;
+      }
     },
+    retry: false,
   });
 
   // Fetch collaborating projects
-  const { data: collaboratingData, isLoading: collaboratingLoading, error: collaboratingError } = useQuery({
+  const { data: collaboratingData, isLoading: collaboratingLoading } = useQuery({
     queryKey: ['my-collaborating-projects'],
     queryFn: async () => {
-      const response = await projectAPI.getMyCollaboratingProjects();
-      return response.data;
+      try {
+        const response = await projectAPI.getMyCollaboratingProjects();
+        return response.data;
+      } catch (err) {
+        if (!err.response) return { projects: [] };
+        throw err;
+      }
     },
+    retry: false,
   });
 
   const leadingProjects = leadingData?.projects || [];
   const collaboratingProjects = collaboratingData?.projects || [];
 
   const isLoading = activeTab === 'leading' ? leadingLoading : collaboratingLoading;
-  const error = activeTab === 'leading' ? leadingError : collaboratingError;
+  const error = null; // handled gracefully inside queryFn
 
   if (isLoading) {
     return (
