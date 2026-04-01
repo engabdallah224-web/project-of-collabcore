@@ -245,6 +245,83 @@ export const subscribeToProjectMessages = (projectId, onMessages) => {
   };
 };
 
+// ─── Meetings ─────────────────────────────────────────────────────────────────
+
+const MEETINGS_COLLECTION = 'meetings';
+
+/**
+ * Generate a Jitsi room URL for a project.
+ * Uses meet.jit.si — free, no sign-in required, works on all devices.
+ */
+export const generateJitsiUrl = (projectId, suffix = '') => {
+  const room = `CollabCore-${projectId}${suffix ? '-' + suffix : ''}`.replace(/[^a-zA-Z0-9-]/g, '-');
+  return `https://meet.jit.si/${room}`;
+};
+
+/**
+ * Save a meeting record to Firestore and return it.
+ */
+export const createMeetingDirect = async ({
+  projectId,
+  title,
+  description = '',
+  meeting_type = 'other',
+  scheduled_at,
+  duration_minutes = 60,
+  meeting_url,
+  agenda = [],
+  participants = [],
+}) => {
+  const uid = auth.currentUser?.uid;
+  const meetingDoc = {
+    project_id: projectId,
+    title,
+    description,
+    meeting_type,
+    scheduled_at: scheduled_at || new Date().toISOString(),
+    duration_minutes,
+    meeting_url,
+    agenda,
+    participants,
+    created_by: uid || null,
+    meeting_status: 'scheduled',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const ref = await addDoc(collection(db, MEETINGS_COLLECTION), meetingDoc);
+  return { id: ref.id, ...meetingDoc };
+};
+
+/**
+ * Fetch all meetings for a project.
+ */
+export const fetchMeetingsDirect = async (projectId) => {
+  try {
+    const q = query(
+      collection(db, MEETINGS_COLLECTION),
+      where('project_id', '==', projectId),
+      orderBy('scheduled_at', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch {
+    // Fallback without orderBy
+    const snap = await getDocs(collection(db, MEETINGS_COLLECTION));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((m) => m.project_id === projectId)
+      .sort((a, b) => (String(b.scheduled_at) > String(a.scheduled_at) ? 1 : -1));
+  }
+};
+
+/**
+ * Delete a meeting by Firestore document id.
+ */
+export const deleteMeetingDirect = async (meetingId) => {
+  const { deleteDoc } = await import('firebase/firestore');
+  await deleteDoc(doc(db, MEETINGS_COLLECTION, meetingId));
+};
+
 // ─── User profile ─────────────────────────────────────────────────────────────
 
 export const fetchUserProfile = async (uid) => {

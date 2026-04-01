@@ -1,25 +1,34 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Video, Phone, Calendar, X, Users, Clock, Plus } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { meetingAPI } from '../../services/api';
+import { Video, Phone, Calendar, X, Plus } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { generateJitsiUrl, createMeetingDirect } from '../../services/firestoreService';
 
 export default function CallButtons({ projectId, teamMembers }) {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const queryClient = useQueryClient();
 
-  // Instant call mutation
-  const instantCallMutation = useMutation({
-    mutationFn: (callType) => meetingAPI.createInstantCall(projectId, { call_type: callType }),
-    onSuccess: (response) => {
-      // Open Jitsi meeting in new tab
-      window.open(response.data.meeting_url, '_blank');
+  // Instant call — generate Jitsi URL directly, no backend needed
+  const handleInstantCall = async (callType) => {
+    const suffix = `${callType}-${Date.now()}`;
+    const url = generateJitsiUrl(projectId, suffix);
+    // Save a record to Firestore so team can see it in the Meetings panel
+    try {
+      await createMeetingDirect({
+        projectId,
+        title: callType === 'video' ? 'Instant Video Call' : 'Instant Audio Call',
+        meeting_type: 'other',
+        scheduled_at: new Date().toISOString(),
+        duration_minutes: 60,
+        meeting_url: url,
+        agenda: [],
+        participants: teamMembers?.map((m) => m.id) || [],
+      });
       queryClient.invalidateQueries(['project-meetings', projectId]);
-    },
-  });
-
-  const handleInstantCall = (callType) => {
-    instantCallMutation.mutate(callType);
+    } catch {
+      // silent — still open call even if Firestore save fails
+    }
+    window.open(url, '_blank');
   };
 
   return (
@@ -28,8 +37,7 @@ export default function CallButtons({ projectId, teamMembers }) {
         {/* Video Call Button */}
         <motion.button
           onClick={() => handleInstantCall('video')}
-          disabled={instantCallMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all disabled:opacity-50 shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all shadow-sm"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           title="Start instant video call"
@@ -41,8 +49,7 @@ export default function CallButtons({ projectId, teamMembers }) {
         {/* Audio Call Button */}
         <motion.button
           onClick={() => handleInstantCall('audio')}
-          disabled={instantCallMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all disabled:opacity-50 shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all shadow-sm"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           title="Start instant audio call"
@@ -91,24 +98,39 @@ function ScheduleMeetingModal({ projectId, teamMembers, onClose, onSuccess }) {
     participants: [],
     agenda: [''],
     meeting_url: '',
-    auto_generate_room: true
+    auto_generate_room: true,
   });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
-  const createMeetingMutation = useMutation({
-    mutationFn: (data) => meetingAPI.createMeeting(projectId, data),
-    onSuccess: () => {
-      onSuccess();
-    },
-  });
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const cleanedData = {
-      ...formData,
-      agenda: formData.agenda.filter(item => item.trim() !== ''),
-      project_id: projectId
-    };
-    createMeetingMutation.mutate(cleanedData);
+    setSaveError('');
+    setSaving(true);
+    try {
+      const url = formData.auto_generate_room
+        ? generateJitsiUrl(projectId, `${formData.meeting_type}-${Date.now()}`)
+        : formData.meeting_url.trim();
+
+      await createMeetingDirect({
+        projectId,
+        title: formData.title,
+        description: formData.description,
+        meeting_type: formData.meeting_type,
+        scheduled_at: formData.scheduled_at
+          ? new Date(formData.scheduled_at).toISOString()
+          : new Date().toISOString(),
+        duration_minutes: parseInt(formData.duration_minutes) || 60,
+        meeting_url: url,
+        agenda: formData.agenda.filter((a) => a.trim() !== ''),
+        participants: formData.participants,
+      });
+      onSuccess();
+    } catch {
+      setSaveError('Failed to schedule meeting. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addAgendaItem = () => {
@@ -340,11 +362,9 @@ function ScheduleMeetingModal({ projectId, teamMembers, onClose, onSuccess }) {
             </div>
           </div>
 
-          {createMeetingMutation.isError && (
+          {saveError && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">
-                {createMeetingMutation.error?.response?.data?.detail || 'Failed to schedule meeting'}
-              </p>
+              <p className="text-sm text-red-600">{saveError}</p>
             </div>
           )}
 
@@ -359,10 +379,10 @@ function ScheduleMeetingModal({ projectId, teamMembers, onClose, onSuccess }) {
             </button>
             <button
               type="submit"
-              disabled={createMeetingMutation.isPending}
+              disabled={saving}
               className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-all disabled:opacity-50"
             >
-              {createMeetingMutation.isPending ? 'Scheduling...' : 'Schedule Meeting'}
+              {saving ? 'Scheduling...' : 'Schedule Meeting'}
             </button>
           </div>
         </form>

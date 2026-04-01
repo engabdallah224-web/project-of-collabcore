@@ -5,7 +5,7 @@ import {
   Plus, X, CheckCircle, AlertCircle, PlayCircle, MapPin 
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { meetingAPI } from '../../services/api';
+import { fetchMeetingsDirect, deleteMeetingDirect, generateJitsiUrl, createMeetingDirect } from '../../services/firestoreService';
 
 const MeetingsPanel = ({ projectId, teamMembers }) => {
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -13,32 +13,28 @@ const MeetingsPanel = ({ projectId, teamMembers }) => {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const queryClient = useQueryClient();
 
-  // Fetch all meetings
+  // Fetch all meetings from Firestore
   const { data: meetingsData, isLoading } = useQuery({
     queryKey: ['project-meetings', projectId],
-    queryFn: async () => {
-      const response = await meetingAPI.getMeetings(projectId);
-      return response.data.meetings || [];
-    },
+    queryFn: () => fetchMeetingsDirect(projectId),
     enabled: !!projectId,
-    refetchInterval: 30000 // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
-  // Delete meeting mutation
+  // Delete meeting
   const deleteMeetingMutation = useMutation({
-    mutationFn: (meetingId) => meetingAPI.deleteMeeting(meetingId),
+    mutationFn: (meetingId) => deleteMeetingDirect(meetingId),
     onSuccess: () => {
       queryClient.invalidateQueries(['project-meetings', projectId]);
-    }
+    },
   });
 
-  // Join meeting mutation
-  const joinMeetingMutation = useMutation({
-    mutationFn: (meetingId) => meetingAPI.joinMeeting(meetingId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['project-meetings', projectId]);
+  // Join meeting — just open the URL
+  const handleJoinMeeting = (meeting) => {
+    if (meeting.meeting_url) {
+      window.open(meeting.meeting_url, '_blank');
     }
-  });
+  };
 
   // Filter meetings by status
   const upcomingMeetings = meetingsData?.filter(m => 
@@ -105,13 +101,6 @@ const MeetingsPanel = ({ projectId, teamMembers }) => {
   const handleDeleteMeeting = (meetingId) => {
     if (window.confirm('Are you sure you want to delete this meeting?')) {
       deleteMeetingMutation.mutate(meetingId);
-    }
-  };
-
-  const handleJoinMeeting = (meeting) => {
-    if (meeting.meeting_url) {
-      joinMeetingMutation.mutate(meeting.id);
-      window.open(meeting.meeting_url, '_blank');
     }
   };
 
@@ -323,34 +312,147 @@ const MeetingsPanel = ({ projectId, teamMembers }) => {
         )}
       </div>
 
-      {/* Schedule Meeting Modal (you can import the one from CallButtons or create a new one) */}
       {showScheduleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-gray-900">Schedule Meeting</h2>
-              <button
-                onClick={() => setShowScheduleModal(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="text-gray-600 mb-4">
-              Use the call buttons in the chat to schedule a meeting, or add your own meeting URL below.
-            </p>
-            <button
-              onClick={() => setShowScheduleModal(false)}
-              className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <PanelScheduleModal
+          projectId={projectId}
+          teamMembers={teamMembers}
+          onClose={() => setShowScheduleModal(false)}
+          onSuccess={() => {
+            setShowScheduleModal(false);
+            queryClient.invalidateQueries(['project-meetings', projectId]);
+          }}
+        />
       )}
     </div>
   );
 };
 
 export default MeetingsPanel;
+
+// ─── Inline schedule modal for MeetingsPanel ─────────────────────────────────
+function PanelScheduleModal({ projectId, teamMembers, onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    meeting_type: 'standup',
+    scheduled_at: '',
+    duration_minutes: 60,
+    description: '',
+    agenda: [''],
+    useCustomUrl: false,
+    meeting_url: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaveError('');
+    setSaving(true);
+    try {
+      const url = formData.useCustomUrl && formData.meeting_url.trim()
+        ? formData.meeting_url.trim()
+        : generateJitsiUrl(projectId, `${formData.meeting_type}-${Date.now()}`);
+
+      await createMeetingDirect({
+        projectId,
+        title: formData.title,
+        description: formData.description,
+        meeting_type: formData.meeting_type,
+        scheduled_at: formData.scheduled_at
+          ? new Date(formData.scheduled_at).toISOString()
+          : new Date().toISOString(),
+        duration_minutes: parseInt(formData.duration_minutes) || 60,
+        meeting_url: url,
+        agenda: formData.agenda.filter((a) => a.trim() !== ''),
+        participants: teamMembers?.map((m) => m.id) || [],
+      });
+      onSuccess();
+    } catch {
+      setSaveError('Failed to schedule meeting. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-900 bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+      >
+        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">Schedule Meeting</h2>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="h-5 w-5" /></button>
+          </div>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Title *</label>
+            <input type="text" value={formData.title} required
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="e.g., Sprint Planning"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Type</label>
+              <select value={formData.meeting_type}
+                onChange={(e) => setFormData({ ...formData, meeting_type: e.target.value })}
+                className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm">
+                <option value="standup">Daily Standup</option>
+                <option value="planning">Planning</option>
+                <option value="review">Review</option>
+                <option value="retrospective">Retrospective</option>
+                <option value="brainstorming">Brainstorming</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Scheduled At *</label>
+              <input type="datetime-local" required value={formData.scheduled_at}
+                onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
+                className="w-full px-3 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Duration (min)</label>
+            <input type="number" value={formData.duration_minutes} min="15" step="15"
+              onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+          </div>
+          <div>
+            <label className="flex items-center space-x-2 text-sm font-semibold text-gray-700 mb-2 cursor-pointer">
+              <input type="checkbox" checked={formData.useCustomUrl}
+                onChange={(e) => setFormData({ ...formData, useCustomUrl: e.target.checked, meeting_url: '' })}
+                className="rounded text-red-600" />
+              <span>Use custom meeting URL (Zoom, Google Meet…)</span>
+            </label>
+            {formData.useCustomUrl && (
+              <input type="url" value={formData.meeting_url}
+                onChange={(e) => setFormData({ ...formData, meeting_url: e.target.value })}
+                placeholder="https://zoom.us/j/123"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+            )}
+            {!formData.useCustomUrl && (
+              <p className="text-xs text-gray-500">A free Jitsi Meet room will be created automatically.</p>
+            )}
+          </div>
+          {saveError && <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{saveError}</p>}
+          <div className="flex space-x-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-all">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-all disabled:opacity-50">
+              {saving ? 'Scheduling…' : 'Schedule Meeting'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
 
