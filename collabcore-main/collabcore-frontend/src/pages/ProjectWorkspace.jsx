@@ -8,8 +8,8 @@ import { auth } from '../config/firebase';
 import {
   fetchProjectById,
   fetchUserProfile,
-  fetchProjectMessages,
   sendProjectMessageDirect,
+  subscribeToProjectMessages,
 } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
@@ -32,6 +32,9 @@ const ProjectWorkspace = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadMethod, setUploadMethod] = useState('upload'); // 'upload' or 'url'
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [realtimeMessages, setRealtimeMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef(null);
@@ -100,51 +103,29 @@ const ProjectWorkspace = () => {
     enabled: !!projectId
   });
 
-  // Fetch messages
-  const { data: messagesData, isLoading: messagesLoading } = useQuery({
-    queryKey: ['project-messages', projectId],
-    queryFn: async () => {
-      try {
-        const response = await messageAPI.getMessages(projectId, { limit: 100 });
-        return response.data.messages;
-      } catch (error) {
-        if (!error.response) {
-          return await fetchProjectMessages(projectId, 100);
-        }
-        throw error;
-      }
-    },
-    enabled: !!projectId,
-    refetchInterval: 5000
-  });
+  // Real-time messages via Firestore onSnapshot
+  useEffect(() => {
+    if (!projectId) return;
+    setMessagesLoading(true);
+    const unsub = subscribeToProjectMessages(projectId, (msgs) => {
+      setRealtimeMessages(msgs);
+      setMessagesLoading(false);
+    });
+    return unsub;
+  }, [projectId]);
 
-  // Send message mutation
+  // Send message mutation — always writes directly to Firestore
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData) => {
-      try {
-        const response = await messageAPI.sendMessage(projectId, {
-          project_id: projectId,
-          content: messageData.content,
-          message_type: messageData.message_type || 'text',
-          file_url: messageData.file_url || null,
-          file_name: messageData.file_name || null
-        });
-        return response.data.message;
-      } catch (error) {
-        if (!error.response) {
-          return await sendProjectMessageDirect({
-            projectId,
-            content: messageData.content,
-            message_type: messageData.message_type || 'text',
-            file_url: messageData.file_url || null,
-            file_name: messageData.file_name || null,
-          });
-        }
-        throw error;
-      }
+      return await sendProjectMessageDirect({
+        projectId,
+        content: messageData.content,
+        message_type: messageData.message_type || 'text',
+        file_url: messageData.file_url || null,
+        file_name: messageData.file_name || null,
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['project-messages', projectId]);
       setMessage('');
       setFileUrl('');
       setFileName('');
@@ -190,21 +171,21 @@ const ProjectWorkspace = () => {
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messagesEndRef.current && messagesData && !messagesLoading) {
+    if (messagesEndRef.current && !messagesLoading) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
-  }, [messagesData, messagesLoading]);
+  }, [realtimeMessages, messagesLoading]);
 
   // Initial scroll to bottom when messages load
   useEffect(() => {
-    if (chatContainerRef.current && messagesData && messagesData.length > 0) {
+    if (chatContainerRef.current && realtimeMessages.length > 0) {
       setTimeout(() => {
         if (chatContainerRef.current) {
           chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         }
       }, 100);
     }
-  }, [messagesData?.length]);
+  }, [realtimeMessages.length]);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -346,6 +327,15 @@ const ProjectWorkspace = () => {
             </div>
 
             <div className="flex items-center space-x-3">
+              {/* Mobile: toggle team sidebar */}
+              <motion.button
+                onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+                className="md:hidden p-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-all"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Users className="h-5 w-5" />
+              </motion.button>
               <CallButtons projectId={projectId} teamMembers={teamMembers} />
               
               <motion.button
@@ -366,14 +356,31 @@ const ProjectWorkspace = () => {
       </motion.div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Mobile overlay backdrop */}
+        {showMobileSidebar && (
+          <div
+            className="md:hidden fixed inset-0 bg-black bg-opacity-40 z-20"
+            onClick={() => setShowMobileSidebar(false)}
+          />
+        )}
+        {/* Sidebar — full sidebar on desktop; slide-over overlay on mobile */}
         <motion.div 
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="w-80 bg-white border-r border-gray-200 flex flex-col shadow-sm"
+          className={`${
+            showMobileSidebar ? 'flex' : 'hidden'
+          } md:flex w-80 bg-white border-r border-gray-200 flex-col shadow-sm
+          fixed md:relative inset-y-0 left-0 z-30 md:z-auto`}
         >
+          {/* Close button on mobile */}
+          <button
+            className="md:hidden absolute top-3 right-3 p-2 bg-gray-100 rounded-full"
+            onClick={() => setShowMobileSidebar(false)}
+          >
+            <X className="h-4 w-4 text-gray-600" />
+          </button>
           {/* Team Section */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-6">
@@ -482,9 +489,9 @@ const ProjectWorkspace = () => {
               <div className="flex items-center justify-center h-full">
                 <LoadingSpinner />
               </div>
-            ) : messagesData && messagesData.length > 0 ? (
+            ) : realtimeMessages && realtimeMessages.length > 0 ? (
               <div className="space-y-4">
-                {[...messagesData].reverse().map((msg, index) => {
+                {realtimeMessages.map((msg, index) => {
                   const isOwn = userData && msg.sender_id === userData.uid;
                   const senderInitials = msg.sender?.full_name
                     ? msg.sender.full_name.split(' ').map(n => n[0]).join('').toUpperCase()

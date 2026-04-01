@@ -14,6 +14,7 @@ import {
   orderBy,
   limit,
   addDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
@@ -204,6 +205,44 @@ export const sendProjectMessageDirect = async ({
 
   const ref = await addDoc(collection(db, MESSAGES_COLLECTION), messageDoc);
   return { id: ref.id, ...messageDoc };
+};
+
+/**
+ * Subscribe to real-time project messages via onSnapshot.
+ * Returns an unsubscribe function — call it in useEffect cleanup.
+ */
+export const subscribeToProjectMessages = (projectId, onMessages) => {
+  const msgsRef = collection(db, MESSAGES_COLLECTION);
+  let innerUnsub = null;
+
+  // Try ordered query (requires composite index in Firestore console)
+  const orderedQ = query(
+    msgsRef,
+    where('project_id', '==', projectId),
+    orderBy('created_at', 'asc')
+  );
+
+  const outerUnsub = onSnapshot(
+    orderedQ,
+    (snap) => {
+      onMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    },
+    () => {
+      // Fallback: listen without orderBy, sort in memory
+      const simpleQ = query(msgsRef, where('project_id', '==', projectId));
+      innerUnsub = onSnapshot(simpleQ, (snap) => {
+        const msgs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (String(a.created_at) > String(b.created_at) ? 1 : -1));
+        onMessages(msgs);
+      });
+    }
+  );
+
+  return () => {
+    outerUnsub();
+    if (innerUnsub) innerUnsub();
+  };
 };
 
 // ─── User profile ─────────────────────────────────────────────────────────────
