@@ -103,18 +103,37 @@ export const login = async (email, password) => {
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
 
-    // Get user profile from backend
-    const response = await authAPI.getMe();
-
-    return {
-      user: response.data.user,
-      idToken,
-    };
+    // Try to get user profile from backend; fall back to Firebase data if backend unreachable
+    try {
+      const response = await authAPI.getMe();
+      return {
+        user: response.data.user,
+        idToken,
+      };
+    } catch (backendError) {
+      // No response means network/connection error (backend not deployed or offline)
+      if (!backendError.response) {
+        return {
+          user: {
+            uid: user.uid,
+            email: user.email,
+            full_name: user.displayName || '',
+            role: 'student',
+          },
+          idToken,
+        };
+      }
+      throw backendError;
+    }
   } catch (error) {
     console.error('Login error:', error);
     
-    // Provide user-friendly error messages
-    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+    // Provide user-friendly error messages (includes newer auth/invalid-credential)
+    if (
+      error.code === 'auth/user-not-found' ||
+      error.code === 'auth/wrong-password' ||
+      error.code === 'auth/invalid-credential'
+    ) {
       throw new Error('Invalid email or password');
     } else if (error.code === 'auth/too-many-requests') {
       throw new Error('Too many failed login attempts. Please try again later.');
@@ -239,6 +258,20 @@ export const getCurrentUser = async () => {
       }
     }
 
+    // Network error: backend unreachable (e.g. only frontend deployed on Vercel)
+    // Fall back to basic Firebase user data so the app stays usable
+    if (!error.response) {
+      const firebaseUser = auth.currentUser;
+      if (firebaseUser) {
+        return {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          full_name: firebaseUser.displayName || '',
+          role: 'student',
+        };
+      }
+    }
+
     throw error;
   }
 };
@@ -258,12 +291,25 @@ export const subscribeToAuthChanges = (callback) => {
         const idToken = await user.getIdToken();
         localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
         
-        // Get user profile from backend
+        // Get user profile from backend (falls back to Firebase user if backend unreachable)
         const userData = await getCurrentUser();
         callback({ user: userData, idToken });
       } catch (error) {
         console.error('Error getting user data:', error);
-        callback({ user: null, idToken: null });
+        // If backend is unreachable but Firebase user is valid, keep user logged in
+        if (!error.response && user) {
+          callback({
+            user: {
+              uid: user.uid,
+              email: user.email,
+              full_name: user.displayName || '',
+              role: 'student',
+            },
+            idToken,
+          });
+        } else {
+          callback({ user: null, idToken: null });
+        }
       }
     } else {
       localStorage.removeItem(ACCESS_TOKEN_KEY);
