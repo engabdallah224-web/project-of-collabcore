@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { authAPI, projectAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { auth } from '../config/firebase';
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('projects');
@@ -44,6 +45,7 @@ const ProfilePage = () => {
     role: 'student',
     joined_date: new Date().toISOString(),
   };
+  const profileAvatarUrl = user.avatar_url || auth.currentUser?.photoURL || null;
 
   const allProjects = [
     ...(projectsData?.leading || []).map(p => ({ ...p, role: 'Project Leader' })),
@@ -84,9 +86,9 @@ const ProfilePage = () => {
             {/* Profile Picture */}
             <div className="flex justify-between items-start -mt-16 mb-6">
               <div className="h-32 w-32 rounded-2xl bg-red-600 flex items-center justify-center text-white text-5xl font-bold border-4 border-white shadow-lg overflow-hidden flex-shrink-0">
-                {user.avatar_url ? (
+                {profileAvatarUrl ? (
                   <img 
-                    src={user.avatar_url} 
+                    src={profileAvatarUrl} 
                     alt={user.full_name}
                     className="w-full h-full object-cover"
                   />

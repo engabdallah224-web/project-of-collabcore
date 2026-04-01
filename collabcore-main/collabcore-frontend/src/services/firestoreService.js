@@ -16,6 +16,7 @@ import {
   addDoc,
   onSnapshot,
   updateDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
@@ -431,6 +432,26 @@ export const markAllNotificationsAsRead = async (uid) => {
         updated_at: new Date().toISOString(),
       })
     )
+  );
+};
+
+/**
+ * Keep Firestore user profile in sync with Firebase Auth fields.
+ * Useful for auto-filling avatar_url from Gmail/Google profile photo.
+ */
+export const syncFirebaseProfileToFirestore = async (firebaseUser) => {
+  if (!firebaseUser?.uid) return;
+
+  await setDoc(
+    doc(db, USERS_COLLECTION, firebaseUser.uid),
+    {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      full_name: firebaseUser.displayName || '',
+      avatar_url: firebaseUser.photoURL || null,
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true }
   );
 };
 

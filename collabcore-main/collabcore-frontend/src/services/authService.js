@@ -10,6 +10,7 @@ import {
 import { auth } from '../config/firebase';
 import api, { authAPI } from './api';
 import { ACCESS_TOKEN_KEY } from '../utils/constants';
+import { syncFirebaseProfileToFirestore } from './firestoreService';
 
 // ============ REGISTER ============
 
@@ -98,6 +99,7 @@ export const login = async (email, password) => {
     // Sign in with Firebase
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+    await syncFirebaseProfileToFirestore(user);
 
     // Get ID token
     const idToken = await user.getIdToken();
@@ -118,6 +120,7 @@ export const login = async (email, password) => {
             uid: user.uid,
             email: user.email,
             full_name: user.displayName || '',
+            avatar_url: user.photoURL || null,
             role: 'student',
           },
           idToken,
@@ -155,6 +158,7 @@ export const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     const userCredential = await signInWithPopup(auth, provider);
     const user = userCredential.user;
+    await syncFirebaseProfileToFirestore(user);
 
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
@@ -191,6 +195,7 @@ export const loginWithGithub = async () => {
     const provider = new GithubAuthProvider();
     const userCredential = await signInWithPopup(auth, provider);
     const user = userCredential.user;
+    await syncFirebaseProfileToFirestore(user);
 
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
@@ -263,10 +268,12 @@ export const getCurrentUser = async () => {
     if (!error.response) {
       const firebaseUser = auth.currentUser;
       if (firebaseUser) {
+        await syncFirebaseProfileToFirestore(firebaseUser);
         return {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           full_name: firebaseUser.displayName || '',
+          avatar_url: firebaseUser.photoURL || null,
           role: 'student',
         };
       }
@@ -287,6 +294,7 @@ export const subscribeToAuthChanges = (callback) => {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
+        await syncFirebaseProfileToFirestore(user);
         // Get fresh ID token
         const idToken = await user.getIdToken();
         localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
@@ -303,6 +311,7 @@ export const subscribeToAuthChanges = (callback) => {
               uid: user.uid,
               email: user.email,
               full_name: user.displayName || '',
+              avatar_url: user.photoURL || null,
               role: 'student',
             },
             idToken,
