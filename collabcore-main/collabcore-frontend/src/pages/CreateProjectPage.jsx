@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Rocket, Tag, Plus, X, Sparkles, Upload, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { projectAPI } from '../services/api';
+import { auth, db } from '../config/firebase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const CreateProjectPage = () => {
@@ -87,27 +89,48 @@ const CreateProjectPage = () => {
     setError('');
     setLoading(true);
 
-    try {
-      const projectData = {
-        title: formData.title,
-        description: formData.description,
-        required_skills: formData.required_skills,
-        team_size_limit: parseInt(formData.team_size_limit),
-        category: formData.category,
-        difficulty: formData.difficulty,
-        duration: formData.duration || 'flexible',
-        tags: formData.tags,
-      };
+    const projectData = {
+      title: formData.title,
+      description: formData.description,
+      required_skills: formData.required_skills,
+      team_size_limit: parseInt(formData.team_size_limit),
+      category: formData.category,
+      difficulty: formData.difficulty,
+      duration: formData.duration || 'flexible',
+      tags: formData.tags,
+    };
 
+    try {
+      // Try backend first
       const response = await projectAPI.createProject(projectData);
-      
-      // Navigate to the new project or to projects list
       if (response.data.project_id) {
         navigate(`/projects/${response.data.project_id}/workspace`);
       } else {
         navigate('/projects');
       }
     } catch (err) {
+      // If backend is unreachable (no response = network error), write directly to Firestore
+      if (!err.response) {
+        try {
+          const uid = auth.currentUser?.uid;
+          if (!uid) throw new Error('Not authenticated');
+          const docRef = await addDoc(collection(db, 'projects'), {
+            ...projectData,
+            owner_id: uid,
+            current_team_size: 1,
+            status: 'recruiting',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          navigate(`/projects/${docRef.id}/workspace`);
+          return;
+        } catch (firestoreErr) {
+          console.error('Firestore direct write failed:', firestoreErr);
+          setError('Failed to create project. Please check your connection and try again.');
+          setLoading(false);
+          return;
+        }
+      }
       console.error('Failed to create project:', err);
       setError(err.response?.data?.detail || 'Failed to create project. Please try again.');
     } finally {
