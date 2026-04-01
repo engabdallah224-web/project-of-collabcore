@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Rocket, Tag, Plus, X, Sparkles, Upload, AlertCircle } from 'lucide-react';
+import { Rocket, Tag, Plus, X, Sparkles, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { projectAPI } from '../services/api';
@@ -18,11 +18,11 @@ const CreateProjectPage = () => {
     difficulty: 'intermediate',
     duration: '',
     tags: [],
+    repository_url: '',
   });
 
   const [currentSkill, setCurrentSkill] = useState('');
   const [currentTag, setCurrentTag] = useState('');
-  const [projectImages, setProjectImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,25 +65,6 @@ const CreateProjectPage = () => {
     }));
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProjectImages((prev) => [...prev, {
-          id: Date.now() + Math.random(),
-          url: reader.result,
-          name: file.name
-        }]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (imageId) => {
-    setProjectImages((prev) => prev.filter((img) => img.id !== imageId));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -98,6 +79,7 @@ const CreateProjectPage = () => {
       difficulty: formData.difficulty,
       duration: formData.duration || 'flexible',
       tags: formData.tags,
+      repository_url: formData.repository_url?.trim() || '',
     };
 
     try {
@@ -411,64 +393,22 @@ const CreateProjectPage = () => {
                   )}
                 </div>
 
-                {/* Project Images */}
+                {/* Repository URL */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Project Images (Optional)
+                    GitHub Repository URL (Optional)
                   </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-red-400 transition-all">
-                    <input
-                      type="file"
-                      id="project-images"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                    <label htmlFor="project-images" className="cursor-pointer">
-                      <motion.div
-                        className="flex flex-col items-center"
-                        whileHover={{ scale: 1.02 }}
-                      >
-                        <div className="h-12 w-12 bg-red-100 rounded-lg flex items-center justify-center mb-2">
-                          <Upload className="h-6 w-6 text-red-600" />
-                        </div>
-                        <p className="text-sm text-gray-700 font-medium mb-1">Upload images</p>
-                        <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
-                      </motion.div>
-                    </label>
-                  </div>
-
-                  {/* Image Previews */}
-                  {projectImages.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mt-3">
-                      {projectImages.map((image) => (
-                        <motion.div
-                          key={image.id}
-                          className="relative group"
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          whileHover={{ scale: 1.05 }}
-                          layout
-                        >
-                          <img
-                            src={image.url}
-                            alt={image.name}
-                            className="w-full h-20 object-cover rounded-lg shadow-sm"
-                          />
-                          <motion.button
-                            type="button"
-                            onClick={() => removeImage(image.id)}
-                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            <X className="h-3 w-3" />
-                          </motion.button>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
+                  <input
+                    type="url"
+                    name="repository_url"
+                    value={formData.repository_url}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 transition-all text-sm"
+                    placeholder="https://github.com/username/repository"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Link your GitHub repository so collaborators can view your code.
+                  </p>
                 </div>
               </div>
             </div>
