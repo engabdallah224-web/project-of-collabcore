@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, TrendingUp, Plus, Loader2, Users } from 'lucide-react';
+import { Sparkles, TrendingUp, Plus, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DiscoveryFeed from '../components/feed/DiscoveryFeed';
@@ -20,8 +20,6 @@ const DiscoveryPage = () => {
   });
 
   const [sortBy, setSortBy] = useState('recent'); // 'match', 'recent', 'popular'
-  const loadMoreRef = useRef(null);
-
   // Fetch ALL projects directly from Firestore (works on mobile + Vercel without backend)
   const {
     data: projectsData,
@@ -63,10 +61,6 @@ const DiscoveryPage = () => {
     }
     return true;
   });
-
-  // Infinite scroll observer
-  // no-op (all loaded at once from Firestore)
-  useEffect(() => {}, []);
 
   // Sort projects
   const sortedProjects = [...filteredProjects].sort((a, b) => {
@@ -259,19 +253,6 @@ const DiscoveryPage = () => {
             ) : (
               <>
                 <DiscoveryFeed projects={sortedProjects} />
-                
-                {/* Infinite scroll trigger */}
-                <div ref={loadMoreRef} className="py-8 text-center">
-                  {isFetchingNextPage && (
-                    <div className="flex items-center justify-center gap-2 text-gray-600">
-                      <Loader2 className="h-6 w-6 animate-spin text-red-600" />
-                      <span>Loading more projects...</span>
-                    </div>
-                  )}
-                  {!hasNextPage && sortedProjects.length > 0 && (
-                    <p className="text-gray-500 text-sm">You've reached the end 🎉</p>
-                  )}
-                </div>
               </>
             )}
           </div>
