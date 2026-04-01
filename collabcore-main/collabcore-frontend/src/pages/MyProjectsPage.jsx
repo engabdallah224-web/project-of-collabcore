@@ -1,53 +1,38 @@
 import { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { motion } from 'framer-motion';
 import { Plus, Briefcase, Users, MessageSquare, FileText, Grid, List, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { projectAPI } from '../services/api';
+import { fetchMyLeadingProjects, fetchMyCollaboratingProjects } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatCategory, formatStatus } from '../utils/helpers';
 
 const MyProjectsPage = () => {
+    const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('leading');
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'name', 'progress'
 
   // Fetch leading projects
-  const { data: leadingData, isLoading: leadingLoading } = useQuery({
+  const { data: leadingProjects = [], isLoading: leadingLoading } = useQuery({
     queryKey: ['my-leading-projects'],
-    queryFn: async () => {
-      try {
-        const response = await projectAPI.getMyLeadingProjects();
-        return response.data;
-      } catch (err) {
-        // Backend unreachable (network error) — return empty gracefully
-        if (!err.response) return { projects: [] };
-        throw err;
-      }
-    },
-    retry: false,
+    queryFn: () => fetchMyLeadingProjects(user?.uid),
+    enabled: !!user?.uid,
+    staleTime: 60000,
+    retry: 1,
   });
 
   // Fetch collaborating projects
-  const { data: collaboratingData, isLoading: collaboratingLoading } = useQuery({
+  const { data: collaboratingProjects = [], isLoading: collaboratingLoading } = useQuery({
     queryKey: ['my-collaborating-projects'],
-    queryFn: async () => {
-      try {
-        const response = await projectAPI.getMyCollaboratingProjects();
-        return response.data;
-      } catch (err) {
-        if (!err.response) return { projects: [] };
-        throw err;
-      }
-    },
-    retry: false,
+    queryFn: () => fetchMyCollaboratingProjects(user?.uid),
+    enabled: !!user?.uid,
+    staleTime: 60000,
+    retry: 1,
   });
 
-  const leadingProjects = leadingData?.projects || [];
-  const collaboratingProjects = collaboratingData?.projects || [];
-
   const isLoading = activeTab === 'leading' ? leadingLoading : collaboratingLoading;
-  const error = null; // handled gracefully inside queryFn
 
   if (isLoading) {
     return (

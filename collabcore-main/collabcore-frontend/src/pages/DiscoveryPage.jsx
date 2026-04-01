@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, TrendingUp, Plus, Loader2, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import DiscoveryFeed from '../components/feed/DiscoveryFeed';
 import FeedFilters from '../components/feed/FeedFilters';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { projectAPI, staticAPI } from '../services/api';
+import { fetchProjects } from '../services/firestoreService';
 import { useAuth } from '../hooks/useAuth';
 
 const DiscoveryPage = () => {
@@ -22,61 +22,30 @@ const DiscoveryPage = () => {
   const [sortBy, setSortBy] = useState('recent'); // 'match', 'recent', 'popular'
   const loadMoreRef = useRef(null);
 
-  // Fetch projects from API with infinite scroll
-  const { 
-    data, 
-    isLoading: projectsLoading, 
-    error: projectsError, 
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    refetch 
-  } = useInfiniteQuery({
+  // Fetch ALL projects directly from Firestore (works on mobile + Vercel without backend)
+  const {
+    data: projectsData,
+    isLoading: projectsLoading,
+    error: projectsError,
+    refetch,
+  } = useQuery({
     queryKey: ['projects', filters.status, filters.category, filters.difficulty],
-    queryFn: async ({ pageParam = null }) => {
-      try {
-        const params = {};
-        if (filters.status && filters.status !== 'all') params.status = filters.status;
-        if (filters.category) params.category = filters.category;
-        if (filters.difficulty) params.difficulty = filters.difficulty;
-        params.limit = 20;
-        if (pageParam) params.cursor = pageParam;
-
-        const response = await projectAPI.getProjects(params);
-        return response.data;
-      } catch (err) {
-        // Backend unreachable (no deployed backend) — return empty gracefully
-        if (!err.response) return { projects: [], has_more: false, next_cursor: null };
-        throw err;
-      }
-    },
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
-    staleTime: 60000, // 1 minute
-    retry: false,
+    queryFn: () =>
+      fetchProjects({
+        status: filters.status,
+        category: filters.category,
+        difficulty: filters.difficulty,
+        limitCount: 100,
+      }),
+    staleTime: 60000,
+    retry: 1,
   });
 
-  // Fetch platform stats
-  const { data: statsData } = useQuery({
-    queryKey: ['stats'],
-    queryFn: async () => {
-      try {
-        const response = await staticAPI.getStats();
-        return response.data;
-      } catch (err) {
-        if (!err.response) return { stats: { active_projects: 0, recruiting_projects: 0, total_students: 0 } };
-        throw err;
-      }
-    },
-    staleTime: 300000, // 5 minutes
-    retry: false,
-  });
+  const projects = projectsData || [];
 
-  // Flatten all pages of projects
-  const projects = data?.pages.flatMap(page => page.projects) || [];
-  
-  const stats = statsData?.stats || {
-    active_projects: 0,
-    recruiting_projects: 0,
+  const stats = {
+    active_projects: projects.filter((p) => p.status === 'active').length,
+    recruiting_projects: projects.filter((p) => p.status === 'recruiting').length,
     total_students: 0,
   };
 
@@ -101,26 +70,8 @@ const DiscoveryPage = () => {
   });
 
   // Infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current);
-    }
-
-    return () => {
-      if (loadMoreRef.current) {
-        observer.unobserve(loadMoreRef.current);
-      }
-    };
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  // no-op (all loaded at once from Firestore)
+  useEffect(() => {}, []);
 
   // Sort projects
   const sortedProjects = [...filteredProjects].sort((a, b) => {
