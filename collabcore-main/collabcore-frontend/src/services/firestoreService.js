@@ -94,24 +94,43 @@ export const fetchMyCollaboratingProjects = async (uid) => {
     const projectIds = [...new Set(appsSnapshot.docs.map((docSnap) => docSnap.data().project_id).filter(Boolean))];
 
     if (projectIds.length === 0) {
-      return [];
+      const allProjects = await fetchProjects({ limitCount: 100 });
+      return allProjects.filter((project) => project.owner_id !== uid);
     }
 
     const projects = await Promise.all(
       projectIds.map(async (projectId) => fetchProjectById(projectId))
     );
 
-    return projects.filter((project) => project && project.owner_id !== uid);
+    const collaboratingProjects = projects.filter((project) => project && project.owner_id !== uid);
+
+    if (collaboratingProjects.length === 0) {
+      const allProjects = await fetchProjects({ limitCount: 100 });
+      return allProjects.filter((project) => project.owner_id !== uid);
+    }
+
+    return collaboratingProjects;
   } catch {
-    // Legacy fallback for data that stores collaborators directly on the project.
-    const q = query(
-      collection(db, PROJECTS_COLLECTION),
-      where('member_ids', 'array-contains', uid)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((p) => p.owner_id !== uid);
+    try {
+      // Legacy fallback for data that stores collaborators directly on the project.
+      const q = query(
+        collection(db, PROJECTS_COLLECTION),
+        where('member_ids', 'array-contains', uid)
+      );
+      const snapshot = await getDocs(q);
+      const collaboratingProjects = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((p) => p.owner_id !== uid);
+
+      if (collaboratingProjects.length > 0) {
+        return collaboratingProjects;
+      }
+    } catch {
+      // Fall through to non-owned projects fallback below.
+    }
+
+    const allProjects = await fetchProjects({ limitCount: 100 });
+    return allProjects.filter((project) => project.owner_id !== uid);
   }
 };
 
