@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Save, X, User, Mail, MapPin, FileText, Code, Camera, ArrowLeft, Plus } from 'lucide-react';
+import { Save, X, User, Code, Camera, ArrowLeft, Plus, Upload } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authAPI, userAPI } from '../services/api';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth } from '../config/firebase';
+import { db } from '../config/firebase';
+import { authAPI, uploadAPI, userAPI } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const EditProfilePage = () => {
@@ -30,6 +33,7 @@ const EditProfilePage = () => {
   });
 
   const [newSkill, setNewSkill] = useState('');
+  const [uploadingField, setUploadingField] = useState('');
 
   // Update form when user data loads
   React.useEffect(() => {
@@ -48,8 +52,25 @@ const EditProfilePage = () => {
   const updateProfileMutation = useMutation({
     mutationFn: async (data) => {
       if (!user?.uid) throw new Error('User not found');
-      const response = await userAPI.updateUser(user.uid, data);
-      return response.data.user;
+      try {
+        const response = await userAPI.updateUser(user.uid, data);
+        return response.data.user;
+      } catch (error) {
+        if (!error.response) {
+          await setDoc(
+            doc(db, 'users', user.uid),
+            {
+              ...data,
+              uid: user.uid,
+              email: user.email || auth.currentUser?.email || '',
+              updated_at: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          return { ...data, uid: user.uid };
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['current-user']);
@@ -80,6 +101,51 @@ const EditProfilePage = () => {
       ...prev,
       skills: prev.skills.filter(skill => skill !== skillToRemove)
     }));
+  };
+
+  const readFileAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleImageSelect = async (field, file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be 5MB or smaller');
+      return;
+    }
+
+    setUploadingField(field);
+    try {
+      // Try backend/cloud upload first
+      const uploadResponse = await uploadAPI.uploadFile(file, `profile-${user?.uid || 'user'}`);
+      const url =
+        uploadResponse?.data?.file_url ||
+        uploadResponse?.data?.secure_url ||
+        uploadResponse?.data?.url;
+
+      if (url) {
+        setFormData((prev) => ({ ...prev, [field]: url }));
+        return;
+      }
+
+      // If API response has no URL, fall back to local data URL
+      const dataUrl = await readFileAsDataUrl(file);
+      setFormData((prev) => ({ ...prev, [field]: dataUrl }));
+    } catch {
+      // Backend unavailable on Vercel/mobile: keep working with local data URL
+      const dataUrl = await readFileAsDataUrl(file);
+      setFormData((prev) => ({ ...prev, [field]: dataUrl }));
+    } finally {
+      setUploadingField('');
+    }
   };
 
   const handleSubmit = (e) => {
@@ -150,6 +216,18 @@ const EditProfilePage = () => {
                 placeholder="https://example.com/banner.jpg"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
               />
+              <div className="mt-3 flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 cursor-pointer transition-colors">
+                  <Upload className="h-4 w-4" />
+                  {uploadingField === 'banner_url' ? 'Uploading...' : 'Upload Banner'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleImageSelect('banner_url', e.target.files?.[0])}
+                  />
+                </label>
+              </div>
               <p className="text-xs text-gray-500 mt-2">Enter a URL for your cover/banner image (recommended: 1200x300px)</p>
             </div>
 
@@ -175,6 +253,18 @@ const EditProfilePage = () => {
                     placeholder="https://example.com/avatar.jpg"
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                   />
+                  <div className="mt-3 flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 cursor-pointer transition-colors">
+                      <Upload className="h-4 w-4" />
+                      {uploadingField === 'avatar_url' ? 'Uploading...' : 'Upload Profile Photo'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageSelect('avatar_url', e.target.files?.[0])}
+                      />
+                    </label>
+                  </div>
                   <p className="text-xs text-gray-500 mt-2">Enter a URL for your profile picture</p>
                 </div>
               </div>
