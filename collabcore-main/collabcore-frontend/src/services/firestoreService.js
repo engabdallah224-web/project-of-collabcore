@@ -19,6 +19,7 @@ import { db, auth } from '../config/firebase';
 
 const PROJECTS_COLLECTION = 'projects';
 const USERS_COLLECTION = 'users';
+const APPLICATIONS_COLLECTION = 'applications';
 const MESSAGES_COLLECTION = 'messages';
 
 // ─── Projects ────────────────────────────────────────────────────────────────
@@ -79,15 +80,39 @@ export const fetchMyLeadingProjects = async (uid) => {
  * Fetch projects where uid is a collaborator (member but not owner).
  */
 export const fetchMyCollaboratingProjects = async (uid) => {
-  const q = query(
-    collection(db, PROJECTS_COLLECTION),
-    where('member_ids', 'array-contains', uid)
-  );
-  const snapshot = await getDocs(q);
-  // Exclude own projects
-  return snapshot.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .filter((p) => p.owner_id !== uid);
+  if (!uid) {
+    return [];
+  }
+
+  try {
+    const acceptedAppsQuery = query(
+      collection(db, APPLICATIONS_COLLECTION),
+      where('user_id', '==', uid),
+      where('status', '==', 'accepted')
+    );
+    const appsSnapshot = await getDocs(acceptedAppsQuery);
+    const projectIds = [...new Set(appsSnapshot.docs.map((docSnap) => docSnap.data().project_id).filter(Boolean))];
+
+    if (projectIds.length === 0) {
+      return [];
+    }
+
+    const projects = await Promise.all(
+      projectIds.map(async (projectId) => fetchProjectById(projectId))
+    );
+
+    return projects.filter((project) => project && project.owner_id !== uid);
+  } catch {
+    // Legacy fallback for data that stores collaborators directly on the project.
+    const q = query(
+      collection(db, PROJECTS_COLLECTION),
+      where('member_ids', 'array-contains', uid)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((p) => p.owner_id !== uid);
+  }
 };
 
 /**
