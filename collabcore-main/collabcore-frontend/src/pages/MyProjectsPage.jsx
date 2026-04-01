@@ -21,6 +21,8 @@ const MyProjectsPage = () => {
     enabled: !!user?.uid,
     staleTime: 60000,
     retry: 1,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   // Fetch collaborating projects
@@ -30,6 +32,8 @@ const MyProjectsPage = () => {
     enabled: !!user?.uid,
     staleTime: 60000,
     retry: 1,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   const isLoading = activeTab === 'leading' ? leadingLoading : collaboratingLoading;

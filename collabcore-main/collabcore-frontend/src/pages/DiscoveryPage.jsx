@@ -37,6 +37,8 @@ const DiscoveryPage = () => {
       }),
     staleTime: 60000,
     retry: 1,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
   });
 
   const projects = projectsData || [];
