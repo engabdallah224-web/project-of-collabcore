@@ -194,7 +194,7 @@ const DiscoveryFeed = ({ projects }) => {
               whileHover={{ y: -4, scale: 1.01 }}
             >
               {/* Gradient Background Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 via-white to-blue-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 via-white to-blue-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
               {/* Top Bar with Match Score */}
               <div className="relative bg-gradient-to-r from-gray-900 via-black to-gray-800 px-4 py-3 flex items-center justify-between">
