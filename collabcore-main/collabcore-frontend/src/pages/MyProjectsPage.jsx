@@ -1,15 +1,24 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { motion } from 'framer-motion';
-import { Plus, Briefcase, Users, MessageSquare, FileText, Grid, List, Award } from 'lucide-react';
+import { Plus, Briefcase, Users, MessageSquare, FileText, Grid, List, Award, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { fetchMyLeadingProjects, fetchMyCollaboratingProjects } from '../services/firestoreService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchMyLeadingProjects, fetchMyCollaboratingProjects, updateProjectStatus } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatCategory, formatStatus } from '../utils/helpers';
 
+const STATUS_OPTIONS = [
+  { value: 'recruiting', label: '🔵 Recruiting', color: 'text-red-700 bg-red-100' },
+  { value: 'active', label: '🟢 Active', color: 'text-green-700 bg-green-100' },
+  { value: 'completed', label: '✅ Completed', color: 'text-gray-700 bg-gray-100' },
+  { value: 'paused', label: '⏸ Paused', color: 'text-yellow-700 bg-yellow-100' },
+];
+
 const MyProjectsPage = () => {
-    const { user } = useAuth();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [updatingStatus, setUpdatingStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('leading');
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'name', 'progress'
@@ -38,6 +47,18 @@ const MyProjectsPage = () => {
 
   const isLoading = activeTab === 'leading' ? leadingLoading : collaboratingLoading;
   const error = activeTab === 'leading' ? leadingError : collaboratingError;
+
+  const handleStatusChange = async (projectId, newStatus) => {
+    setUpdatingStatus(projectId);
+    try {
+      await updateProjectStatus(projectId, newStatus);
+      queryClient.invalidateQueries(['my-leading-projects']);
+    } catch (err) {
+      alert('Failed to update status: ' + (err.message || 'Please try again.'));
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -367,7 +388,7 @@ const MyProjectsPage = () => {
                             </div>
                           )}
 
-                          {/* Modern Action Buttons */}
+                          {/* Action Buttons */}
                           <div className="flex gap-3">
                             <Link to={`/projects/${project.id}/workspace`} className="flex-1">
                               <motion.button
@@ -398,6 +419,24 @@ const MyProjectsPage = () => {
                                 )}
                               </motion.button>
                             </Link>
+                          </div>
+
+                          {/* Status Update */}
+                          <div className="mt-3 flex items-center gap-2">
+                            <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            <select
+                              value={project.status || 'recruiting'}
+                              onChange={(e) => handleStatusChange(project.id, e.target.value)}
+                              disabled={updatingStatus === project.id}
+                              className="flex-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer disabled:opacity-50"
+                            >
+                              {STATUS_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            {updatingStatus === project.id && (
+                              <span className="text-xs text-gray-500">Saving...</span>
+                            )}
                           </div>
                         </div>
                       </motion.div>

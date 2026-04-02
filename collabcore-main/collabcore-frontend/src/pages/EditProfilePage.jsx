@@ -7,19 +7,31 @@ import { doc, setDoc } from 'firebase/firestore';
 import { auth } from '../config/firebase';
 import { db } from '../config/firebase';
 import { authAPI, uploadAPI, userAPI } from '../services/api';
+import { fetchUserProfile } from '../services/firestoreService';
+import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const EditProfilePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  
-  // Fetch current user data
+  const { user: authUser } = useAuth();
+
+  // Fetch current user data — falls back to Firestore when backend is offline
   const { data: userData, isLoading } = useQuery({
     queryKey: ['current-user'],
     queryFn: async () => {
-      const response = await authAPI.getMe();
-      return response.data;
-    }
+      try {
+        const response = await authAPI.getMe();
+        return response.data;
+      } catch (err) {
+        if (!err.response && authUser?.uid) {
+          const profile = await fetchUserProfile(authUser.uid);
+          if (profile) return { user: profile };
+        }
+        throw err;
+      }
+    },
+    retry: 1,
   });
 
   const user = userData?.user;

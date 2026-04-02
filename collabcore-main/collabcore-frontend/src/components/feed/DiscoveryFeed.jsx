@@ -1,52 +1,94 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, MapPin, Send, X, CheckCircle, Heart, Bookmark, TrendingUp, Star, Filter } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { applicationAPI } from '../../services/api';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  createApplicationInFirestore,
+  checkExistingApplication,
+  createNotification,
+  fetchProjectById,
+} from '../../services/firestoreService';
 
 const DiscoveryFeed = ({ projects }) => {
+  const { user } = useAuth();
   const [selectedProject, setSelectedProject] = useState(null);
   const [applicationMessage, setApplicationMessage] = useState('');
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [likedProjects, setLikedProjects] = useState(new Set());
   const [savedProjects, setSavedProjects] = useState(new Set());
+  const [appliedProjects, setAppliedProjects] = useState(new Set());
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [applySuccess, setApplySuccess] = useState(false);
 
-  const queryClient = useQueryClient();
-
-  // Create application mutation
-  const createApplicationMutation = useMutation({
-    mutationFn: async (data) => {
-      const response = await applicationAPI.createApplication(data);
-      return response.data.application;
-    },
-    onSuccess: () => {
-      setShowApplicationModal(false);
-      setApplicationMessage('');
-      queryClient.invalidateQueries(['projects']);
-      alert('Application submitted successfully!');
-    },
-    onError: (error) => {
-      console.error('Failed to submit application:', error);
-      alert(error.response?.data?.detail || 'Failed to submit application. Please try again.');
-    }
-  });
+  // On mount / when projects or user changes, check which ones the user already applied to
+  useEffect(() => {
+    if (!user?.uid || projects.length === 0) return;
+    const check = async () => {
+      const applied = new Set();
+      await Promise.all(
+        projects.map(async (p) => {
+          const existing = await checkExistingApplication(p.id, user.uid).catch(() => null);
+          if (existing) applied.add(p.id);
+        })
+      );
+      setAppliedProjects(applied);
+    };
+    check();
+  }, [user?.uid, projects]);
 
   const handleApply = (project) => {
     setSelectedProject(project);
+    setApplicationMessage('');
+    setApplyError('');
+    setApplySuccess(false);
     setShowApplicationModal(true);
   };
 
-  const submitApplication = () => {
+  const submitApplication = async () => {
     if (!selectedProject || !applicationMessage.trim()) {
-      alert('Please enter a message for your application');
+      setApplyError('Please enter a message for your application.');
       return;
     }
-    
-    createApplicationMutation.mutate({
-      project_id: selectedProject.id,
-      message: applicationMessage
-    });
+    if (!user?.uid) {
+      setApplyError('You must be logged in to apply.');
+      return;
+    }
+
+    setApplyLoading(true);
+    setApplyError('');
+    try {
+      await createApplicationInFirestore({
+        projectId: selectedProject.id,
+        userId: user.uid,
+        message: applicationMessage.trim(),
+        applicantName: user.full_name || user.email || '',
+      });
+
+      // Mark as applied locally
+      setAppliedProjects((prev) => new Set([...prev, selectedProject.id]));
+
+      // Notify project owner
+      if (selectedProject.owner_id) {
+        await createNotification(selectedProject.owner_id, {
+          title: 'New Application',
+          message: `${user.full_name || user.email || 'Someone'} applied to your project "${selectedProject.title}".`,
+          type: 'application',
+          link: `/projects/${selectedProject.id}/applications`,
+        }).catch(() => {});
+      }
+
+      setApplySuccess(true);
+      setTimeout(() => {
+        setShowApplicationModal(false);
+        setApplySuccess(false);
+      }, 1800);
+    } catch (err) {
+      setApplyError(err.message || 'Failed to submit application. Please try again.');
+    } finally {
+      setApplyLoading(false);
+    }
   };
 
   const toggleLike = (projectId) => {
@@ -249,6 +291,16 @@ const DiscoveryFeed = ({ projects }) => {
                       </Link>
 
                       {spotsLeft > 0 && project.status === 'recruiting' ? (
+                        appliedProjects.has(project.id) ? (
+                          <motion.div
+                            className="flex items-center justify-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium text-sm border border-green-200"
+                            initial={{ scale: 0.9 }}
+                            animate={{ scale: 1 }}
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                            Applied
+                          </motion.div>
+                        ) : (
                         <motion.button
                           onClick={() => handleApply(project)}
                           className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 shadow-md hover:shadow-lg transition-all text-sm"
@@ -258,6 +310,7 @@ const DiscoveryFeed = ({ projects }) => {
                           <Send className="h-4 w-4" />
                           Apply Now
                         </motion.button>
+                        )
                       ) : (
                         /* Tags when no Apply button */
                         project.tags && project.tags.length > 0 && (
@@ -367,7 +420,7 @@ const DiscoveryFeed = ({ projects }) => {
                     </label>
                     <textarea
                       value={applicationMessage}
-                      onChange={(e) => setApplicationMessage(e.target.value)}
+                      onChange={(e) => { setApplicationMessage(e.target.value); setApplyError(''); }}
                       rows="6"
                       className="w-full px-4 py-3 border-2 border-gray-200 bg-white text-gray-900 rounded-xl focus:border-red-500 focus:outline-none transition-all resize-none placeholder:text-gray-400"
                       placeholder="Tell the project leader why you're a great fit for this project. Mention your relevant skills and experience..."
@@ -377,16 +430,20 @@ const DiscoveryFeed = ({ projects }) => {
                     </p>
                   </div>
 
-                  {/* Your Skills Match */}
-                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <span className="font-semibold text-green-900">Skills Match</span>
+                  {/* Error */}
+                  {applyError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                      {applyError}
                     </div>
-                    <p className="text-sm text-green-700">
-                      You have 3 of 4 required skills! This is a great match for your profile.
-                    </p>
-                  </div>
+                  )}
+
+                  {/* Success */}
+                  {applySuccess && (
+                    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2 text-sm text-green-700">
+                      <CheckCircle className="h-4 w-4" />
+                      Application submitted successfully!
+                    </div>
+                  )}
 
                   {/* Actions */}
                   <div className="flex gap-3">
@@ -398,13 +455,13 @@ const DiscoveryFeed = ({ projects }) => {
                     </button>
                     <motion.button
                       onClick={submitApplication}
-                      disabled={!applicationMessage.trim() || createApplicationMutation.isPending}
-                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700  shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                      whileHover={{ scale: applicationMessage.trim() && !createApplicationMutation.isPending ? 1.02 : 1 }}
-                      whileTap={{ scale: applicationMessage.trim() && !createApplicationMutation.isPending ? 0.98 : 1 }}
+                      disabled={!applicationMessage.trim() || applyLoading || applySuccess}
+                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      whileHover={{ scale: applicationMessage.trim() && !applyLoading ? 1.02 : 1 }}
+                      whileTap={{ scale: applicationMessage.trim() && !applyLoading ? 0.98 : 1 }}
                     >
                       <Send className="h-5 w-5" />
-                      {createApplicationMutation.isPending ? 'Submitting...' : 'Submit Application'}
+                      {applyLoading ? 'Submitting...' : applySuccess ? 'Submitted!' : 'Submit Application'}
                     </motion.button>
                   </div>
                 </div>

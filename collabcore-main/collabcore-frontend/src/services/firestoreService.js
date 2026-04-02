@@ -486,3 +486,99 @@ export const fetchUserProfile = async (uid) => {
   }
   return null;
 };
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+/**
+ * Create a notification for a user in Firestore.
+ */
+export const createNotification = async (userId, { title, message, type = 'info', link = null }) => {
+  if (!userId) return;
+  await addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
+    user_id: userId,
+    title,
+    message,
+    type,
+    link,
+    is_read: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+};
+
+// ─── Applications ─────────────────────────────────────────────────────────────
+
+/**
+ * Submit a project application directly to Firestore.
+ * Returns the new application document.
+ */
+export const createApplicationInFirestore = async ({ projectId, userId, message, applicantName }) => {
+  const existing = await checkExistingApplication(projectId, userId);
+  if (existing) throw new Error('You have already applied to this project.');
+
+  const ref = await addDoc(collection(db, APPLICATIONS_COLLECTION), {
+    project_id: projectId,
+    user_id: userId,
+    message,
+    applicant_name: applicantName || '',
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  return { id: ref.id, project_id: projectId, user_id: userId, status: 'pending' };
+};
+
+/**
+ * Check if a user has already applied to a project.
+ */
+export const checkExistingApplication = async (projectId, userId) => {
+  if (!projectId || !userId) return null;
+  const q = query(
+    collection(db, APPLICATIONS_COLLECTION),
+    where('project_id', '==', projectId),
+    where('user_id', '==', userId)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+};
+
+/**
+ * Fetch all applications for a project (for the owner).
+ */
+export const fetchProjectApplications = async (projectId) => {
+  const q = query(
+    collection(db, APPLICATIONS_COLLECTION),
+    where('project_id', '==', projectId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+};
+
+// ─── Project status ───────────────────────────────────────────────────────────
+
+/**
+ * Update a project's status field in Firestore.
+ */
+export const updateProjectStatus = async (projectId, status) => {
+  await updateDoc(doc(db, PROJECTS_COLLECTION, projectId), {
+    status,
+    updated_at: new Date().toISOString(),
+  });
+};
+
+// ─── Users search ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all users from Firestore (for search).
+ */
+export const fetchAllUsers = async (limitCount = 100) => {
+  try {
+    const q = query(collection(db, USERS_COLLECTION), limit(limitCount));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, uid: d.id, ...d.data() }));
+  } catch {
+    return [];
+  }
+};
+
