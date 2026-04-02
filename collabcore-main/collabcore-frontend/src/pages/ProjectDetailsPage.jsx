@@ -17,6 +17,10 @@ import {
   createApplicationInFirestore,
   checkExistingApplication,
   createNotification,
+  fetchUserLikes,
+  fetchUserSaves,
+  toggleProjectLike,
+  toggleProjectSave,
 } from '../services/firestoreService';
 import { useAuth } from '../hooks/useAuth';
 import { auth } from '../config/firebase';
@@ -32,6 +36,42 @@ const ProjectDetailsPage = () => {
   const [applyError, setApplyError] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
   const [hasAppliedDirect, setHasAppliedDirect] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [shareToast, setShareToast] = useState(false);
+
+  // Load like/save state from Firestore on mount
+  React.useEffect(() => {
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (!uid || !projectId) return;
+    fetchUserLikes(uid).then((ids) => setIsLiked(ids.includes(projectId))).catch(() => {});
+    fetchUserSaves(uid).then((ids) => setIsSaved(ids.includes(projectId))).catch(() => {});
+  }, [authUser?.uid, projectId]);
+
+  const handleLike = async () => {
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (!uid) return;
+    setIsLiked((v) => !v);
+    try { await toggleProjectLike(uid, projectId); } catch { setIsLiked((v) => !v); }
+  };
+
+  const handleSave = async () => {
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (!uid) return;
+    setIsSaved((v) => !v);
+    try { await toggleProjectSave(uid, projectId); } catch { setIsSaved((v) => !v); }
+  };
+
+  const handleShare = () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      navigator.share({ title: projectData?.title, url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).catch(() => {});
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 2000);
+    }
+  };
 
   // Fetch project details — try backend first, fall back to Firestore
   const { data: projectData, isLoading: projectLoading } = useQuery({
@@ -282,26 +322,40 @@ const ProjectDetailsPage = () => {
               {/* Action Buttons */}
               <div className="flex items-center gap-3">
                 <motion.button
+                  onClick={handleLike}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="p-3 bg-white/10 hover:bg-white/20 rounded-lg backdrop-blur-sm border border-white/20 transition-colors"
+                  className={`p-3 rounded-lg backdrop-blur-sm border border-white/20 transition-colors ${
+                    isLiked ? 'bg-red-500 text-white' : 'bg-white/10 hover:bg-white/20'
+                  }`}
                 >
-                  <Heart className="h-5 w-5" />
+                  <Heart className={`h-5 w-5 ${isLiked ? 'fill-current' : ''}`} />
                 </motion.button>
                 <motion.button
+                  onClick={handleSave}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="p-3 bg-white/10 hover:bg-white/20 rounded-lg backdrop-blur-sm border border-white/20 transition-colors"
+                  className={`p-3 rounded-lg backdrop-blur-sm border border-white/20 transition-colors ${
+                    isSaved ? 'bg-amber-400 text-white' : 'bg-white/10 hover:bg-white/20'
+                  }`}
                 >
-                  <Bookmark className="h-5 w-5" />
+                  <Bookmark className={`h-5 w-5 ${isSaved ? 'fill-current' : ''}`} />
                 </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="p-3 bg-white/10 hover:bg-white/20 rounded-lg backdrop-blur-sm border border-white/20 transition-colors"
-                >
-                  <Share2 className="h-5 w-5" />
-                </motion.button>
+                <div className="relative">
+                  <motion.button
+                    onClick={handleShare}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="p-3 bg-white/10 hover:bg-white/20 rounded-lg backdrop-blur-sm border border-white/20 transition-colors"
+                  >
+                    <Share2 className="h-5 w-5" />
+                  </motion.button>
+                  {shareToast && (
+                    <div className="absolute -bottom-10 right-0 bg-black text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">
+                      Link copied!
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </motion.div>
