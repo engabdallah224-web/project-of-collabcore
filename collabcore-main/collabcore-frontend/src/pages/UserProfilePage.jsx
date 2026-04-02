@@ -7,7 +7,6 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import {
   fetchUserProfile,
   fetchMyLeadingProjects,
-  fetchMyCollaboratingProjects,
 } from '../services/firestoreService';
 
 const UserProfilePage = () => {
@@ -26,33 +25,14 @@ const UserProfilePage = () => {
     enabled: !!userId,
   });
 
-  const { data: collaboratingProjects = [], isLoading: collaboratingLoading } = useQuery({
-    queryKey: ['user-collaborating-projects', userId],
-    queryFn: async () => fetchMyCollaboratingProjects(userId),
-    enabled: !!userId,
-  });
-
   const publicProjects = useMemo(() => {
-    const lead = (leadingProjects || []).map((project) => ({
+    return (leadingProjects || []).map((project) => ({
       ...project,
       roleLabel: 'Project Leader',
     }));
+  }, [leadingProjects]);
 
-    const collab = (collaboratingProjects || []).map((project) => ({
-      ...project,
-      roleLabel: 'Team Member',
-    }));
-
-    const byId = new Map();
-    [...lead, ...collab].forEach((project) => {
-      if (!project?.id) return;
-      byId.set(project.id, project);
-    });
-
-    return Array.from(byId.values());
-  }, [leadingProjects, collaboratingProjects]);
-
-  const loading = userLoading || leadingLoading || collaboratingLoading;
+  const loading = userLoading || leadingLoading;
 
   if (loading) {
     return (
@@ -235,7 +215,7 @@ const UserProfilePage = () => {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h3 className="font-semibold text-gray-900">
                   <Briefcase className="inline h-5 w-5 mr-2 text-red-600" />
-                  Public Projects ({publicProjects.length})
+                  Created Projects ({publicProjects.length})
                 </h3>
               </div>
 
@@ -247,7 +227,7 @@ const UserProfilePage = () => {
                   {publicProjects.map((project, index) => (
                     <motion.div
                       key={project.id}
-                      className="p-4 border-2 border-gray-100 rounded-xl hover:border-red-200 hover:bg-red-600  transition-all cursor-pointer"
+                      className="p-4 border-2 border-gray-100 rounded-xl hover:border-gray-200 hover:bg-gray-50 transition-all cursor-pointer"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.1 }}
@@ -267,7 +247,7 @@ const UserProfilePage = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span className="font-medium text-red-600">{project.roleLabel || 'Contributor'}</span>
+                        <span className="font-medium text-gray-700">{project.roleLabel || 'Contributor'}</span>
                         <span>Team of {project.current_team_size || project.team_size || 1}</span>
                       </div>
                     </motion.div>
