@@ -390,16 +390,22 @@ export const subscribeToAuthChanges = (callback) => {
         }
 
         await syncFirebaseProfileToFirestore(user);
-        // Get fresh ID token
-        const idToken = await user.getIdToken();
-        localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
-        
+        // Get fresh ID token — declared outside try so catch block can access it
+        let idToken = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
+        try {
+          idToken = await user.getIdToken();
+          localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
+        } catch (_tokenErr) {
+          // use existing token from localStorage if refresh fails
+        }
+
         // Get user profile from backend (falls back to Firebase user if backend unreachable)
         const userData = await getCurrentUser();
         callback({ user: userData, idToken });
       } catch (error) {
         console.error('Error getting user data:', error);
         // If backend is unreachable but Firebase user is valid, keep user logged in
+        const savedToken = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
         if (!error.response && user) {
           callback({
             user: {
@@ -409,7 +415,7 @@ export const subscribeToAuthChanges = (callback) => {
               avatar_url: user.photoURL || null,
               role: 'student',
             },
-            idToken,
+            idToken: savedToken,
           });
         } else {
           callback({ user: null, idToken: null });

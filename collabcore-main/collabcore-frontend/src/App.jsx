@@ -3,10 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import Header from './components/common/Header';
 import Footer from './components/common/Footer';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import DiscoveryPage from './pages/DiscoveryPage';
 import ProfilePage from './pages/ProfilePage';
 import CreateProjectPage from './pages/CreateProjectPage';
@@ -38,6 +40,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
+            <ErrorBoundary>
             <div className="min-h-screen flex flex-col bg-white">
               <Header />
               <main className="flex-grow">
@@ -46,6 +49,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
                 {/* Protected Routes - Placeholders for now */}
                 <Route
@@ -166,6 +170,7 @@ function App() {
               </main>
               <Footer />
             </div>
+            </ErrorBoundary>
         </AuthProvider>
       </Router>
     </QueryClientProvider>
