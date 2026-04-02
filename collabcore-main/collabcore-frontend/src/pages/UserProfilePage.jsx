@@ -120,7 +120,7 @@ const UserProfilePage = () => {
                     )}
                   </div>
                   <div className="mt-2">
-                    <span className="inline-flex items-center px-3 py-1 bg-red-600 text-red-700 text-sm font-semibold rounded-full border border-red-200">
+                    <span className="inline-flex items-center px-3 py-1 bg-red-600 text-white text-sm font-semibold rounded-full">
                       {user.role === 'project_leader' ? '🚀 Project Leader' : '🎓 Student'}
                     </span>
                   </div>
@@ -145,16 +145,16 @@ const UserProfilePage = () => {
             {/* Stats - Limited */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-red-600 rounded-xl">
-                <div className="text-2xl font-bold text-red-700">{publicProjects.length}</div>
-                <div className="text-sm text-gray-600">Projects</div>
+                <div className="text-2xl font-bold text-white">{publicProjects.length}</div>
+                <div className="text-sm text-red-100">Projects</div>
               </div>
               <div className="text-center p-4 bg-red-600 rounded-xl">
-                <div className="text-2xl font-bold text-red-700">{skills.length}</div>
-                <div className="text-sm text-gray-600">Skills</div>
+                <div className="text-2xl font-bold text-white">{skills.length}</div>
+                <div className="text-sm text-red-100">Skills</div>
               </div>
               <div className="text-center p-4 bg-red-600 rounded-xl">
-                <div className="text-2xl font-bold text-pink-700">{leadingProjects.length}</div>
-                <div className="text-sm text-gray-600">Led Projects</div>
+                <div className="text-2xl font-bold text-white">{leadingProjects.length}</div>
+                <div className="text-sm text-red-100">Led Projects</div>
               </div>
             </div>
           </div>
@@ -179,7 +179,7 @@ const UserProfilePage = () => {
                 {skills.map((skill, index) => (
                   <motion.span
                     key={index}
-                    className="px-3 py-1.5 bg-red-600 text-red-700 text-sm font-medium rounded-full border border-red-200"
+                    className="px-3 py-1.5 bg-red-600 text-white text-sm font-medium rounded-full"
                     whileHover={{ scale: 1.1 }}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
