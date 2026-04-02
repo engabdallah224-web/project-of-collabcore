@@ -17,6 +17,7 @@ import {
   onSnapshot,
   updateDoc,
   setDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
@@ -581,4 +582,64 @@ export const fetchAllUsers = async (limitCount = 100) => {
     return [];
   }
 };
+
+// ─── Likes & Saves ────────────────────────────────────────────────────────────
+
+const LIKES_COLLECTION = 'project_likes';
+const SAVES_COLLECTION = 'project_saves';
+
+/**
+ * Fetch all project IDs that a user has liked.
+ */
+export const fetchUserLikes = async (userId) => {
+  if (!userId) return [];
+  const q = query(collection(db, LIKES_COLLECTION), where('user_id', '==', userId));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data().project_id);
+};
+
+/**
+ * Fetch all project IDs that a user has saved.
+ */
+export const fetchUserSaves = async (userId) => {
+  if (!userId) return [];
+  const q = query(collection(db, SAVES_COLLECTION), where('user_id', '==', userId));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data().project_id);
+};
+
+/**
+ * Toggle like on a project. Returns true if liked, false if unliked.
+ */
+export const toggleProjectLike = async (userId, projectId) => {
+  if (!userId || !projectId) return false;
+  const docId = `${userId}_${projectId}`;
+  const ref = doc(db, LIKES_COLLECTION, docId);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    await deleteDoc(ref);
+    return false;
+  } else {
+    await setDoc(ref, { user_id: userId, project_id: projectId, created_at: new Date().toISOString() });
+    return true;
+  }
+};
+
+/**
+ * Toggle save on a project. Returns true if saved, false if unsaved.
+ */
+export const toggleProjectSave = async (userId, projectId) => {
+  if (!userId || !projectId) return false;
+  const docId = `${userId}_${projectId}`;
+  const ref = doc(db, SAVES_COLLECTION, docId);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    await deleteDoc(ref);
+    return false;
+  } else {
+    await setDoc(ref, { user_id: userId, project_id: projectId, created_at: new Date().toISOString() });
+    return true;
+  }
+};
+
 

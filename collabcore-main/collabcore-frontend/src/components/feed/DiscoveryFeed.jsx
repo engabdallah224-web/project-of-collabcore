@@ -8,6 +8,10 @@ import {
   checkExistingApplication,
   createNotification,
   fetchProjectById,
+  fetchUserLikes,
+  fetchUserSaves,
+  toggleProjectLike,
+  toggleProjectSave,
 } from '../../services/firestoreService';
 
 const DiscoveryFeed = ({ projects }) => {
@@ -21,6 +25,13 @@ const DiscoveryFeed = ({ projects }) => {
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyError, setApplyError] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
+
+  // On mount / when user changes, load liked + saved project IDs from Firestore
+  useEffect(() => {
+    if (!user?.uid) return;
+    fetchUserLikes(user.uid).then((ids) => setLikedProjects(new Set(ids))).catch(() => {});
+    fetchUserSaves(user.uid).then((ids) => setSavedProjects(new Set(ids))).catch(() => {});
+  }, [user?.uid]);
 
   // On mount / when projects or user changes, check which ones the user already applied to
   useEffect(() => {
@@ -91,28 +102,44 @@ const DiscoveryFeed = ({ projects }) => {
     }
   };
 
-  const toggleLike = (projectId) => {
+  const toggleLike = async (projectId) => {
+    if (!user?.uid) return;
+    // Optimistic update
     setLikedProjects(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(projectId)) {
-        newSet.delete(projectId);
-      } else {
-        newSet.add(projectId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
+      return next;
     });
+    try {
+      await toggleProjectLike(user.uid, projectId);
+    } catch {
+      // Revert on failure
+      setLikedProjects(prev => {
+        const next = new Set(prev);
+        if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
+        return next;
+      });
+    }
   };
 
-  const toggleSave = (projectId) => {
+  const toggleSave = async (projectId) => {
+    if (!user?.uid) return;
+    // Optimistic update
     setSavedProjects(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(projectId)) {
-        newSet.delete(projectId);
-      } else {
-        newSet.add(projectId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
+      return next;
     });
+    try {
+      await toggleProjectSave(user.uid, projectId);
+    } catch {
+      // Revert on failure
+      setSavedProjects(prev => {
+        const next = new Set(prev);
+        if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
+        return next;
+      });
+    }
   };
 
   const getMatchScore = () => {
