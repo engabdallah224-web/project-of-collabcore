@@ -89,6 +89,13 @@ const ProjectWorkspace = () => {
     retry: 1
   });
 
+  // Fallback owner profile (when owner info is missing in project payload)
+  const { data: ownerProfile } = useQuery({
+    queryKey: ['owner-profile', projectData?.owner_id],
+    queryFn: async () => fetchUserProfile(projectData?.owner_id),
+    enabled: !!projectData?.owner_id && !projectData?.owner?.full_name,
+  });
+
   // Fetch tasks
   const { data: tasksData } = useQuery({
     queryKey: ['project-tasks', projectId],
@@ -141,11 +148,12 @@ const ProjectWorkspace = () => {
     const members = [];
     
     // Add project owner
+    const ownerName = projectData.owner?.full_name || ownerProfile?.full_name || 'Unknown';
     members.push({
       id: projectData.owner_id,
-      name: projectData.owner?.full_name || 'Unknown',
+      name: ownerName,
       role: 'Project Leader',
-      avatar: projectData.owner?.full_name?.charAt(0) || 'U',
+      avatar: ownerName?.charAt(0)?.toUpperCase() || 'U',
       status: 'online',
       isOwner: true
     });
@@ -167,7 +175,13 @@ const ProjectWorkspace = () => {
     });
     
     return members;
-  }, [projectData, applicationsData, userData]);
+  }, [projectData, applicationsData, userData, ownerProfile]);
+
+  const handleViewUserProfile = (userId) => {
+    if (!userId) return;
+    setShowMobileSidebar(false);
+    navigate(`/users/${userId}`);
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -403,7 +417,11 @@ const ProjectWorkspace = () => {
                     transition={{ delay: index * 0.05 }}
                     className="group"
                   >
-                    <div className="flex items-center space-x-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all">
+                    <button
+                      type="button"
+                      onClick={() => handleViewUserProfile(member.id)}
+                      className="w-full text-left flex items-center space-x-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
+                    >
                       {/* Avatar */}
                       <div className="relative flex-shrink-0">
                         <div className={`h-12 w-12 rounded-full flex items-center justify-center text-lg font-bold text-white ${
@@ -426,7 +444,7 @@ const ProjectWorkspace = () => {
                         <p className="text-sm font-semibold text-gray-900 truncate">{member.name}</p>
                         <p className="text-xs text-gray-500">{member.role}</p>
                       </div>
-                    </div>
+                    </button>
                   </motion.div>
                 ))}
               </div>

@@ -1,61 +1,91 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Calendar, Award, Briefcase, Code, ArrowLeft, Mail } from 'lucide-react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { MapPin, Calendar, Briefcase, Code, ArrowLeft, Mail } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import {
+  fetchUserProfile,
+  fetchMyLeadingProjects,
+  fetchMyCollaboratingProjects,
+} from '../services/firestoreService';
 
 const UserProfilePage = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('projects');
 
-  // Mock user data - would come from API
-  const user = {
-    id: userId,
-    full_name: 'Alex Kumar',
-    university: 'UC Berkeley',
-    bio: 'Full-stack developer passionate about blockchain technology and decentralized applications. Currently working on several innovative projects.',
-    profile_picture: null,
-    skills: ['Blockchain', 'Solidity', 'React', 'Node.js', 'Web3', 'Smart Contracts'],
-    role: 'student',
-    joined_date: '2023-09-15',
-    // Note: Email and other private info not shown
-  };
+  const { data: user, isLoading: userLoading } = useQuery({
+    queryKey: ['user-profile', userId],
+    queryFn: async () => fetchUserProfile(userId),
+    enabled: !!userId,
+  });
 
-  const publicProjects = [
-    {
-      id: 1,
-      title: 'Blockchain Voting System',
-      role: 'Project Leader',
-      status: 'Active',
-      team_size: 4,
-      description: 'Building a secure voting platform using blockchain'
-    },
-    {
-      id: 2,
-      title: 'DeFi Education Platform',
-      role: 'Smart Contract Developer',
-      status: 'Completed',
-      team_size: 6,
-      description: 'Educational platform for learning DeFi concepts'
-    },
-    {
-      id: 3,
-      title: 'NFT Marketplace',
-      role: 'Frontend Developer',
-      status: 'Active',
-      team_size: 5,
-      description: 'Marketplace for student-created digital art'
-    }
-  ];
+  const { data: leadingProjects = [], isLoading: leadingLoading } = useQuery({
+    queryKey: ['user-leading-projects', userId],
+    queryFn: async () => fetchMyLeadingProjects(userId),
+    enabled: !!userId,
+  });
 
-  const endorsements = [
-    { skill: 'Blockchain', count: 8 },
-    { skill: 'Solidity', count: 6 },
-    { skill: 'React', count: 10 }
-  ];
+  const { data: collaboratingProjects = [], isLoading: collaboratingLoading } = useQuery({
+    queryKey: ['user-collaborating-projects', userId],
+    queryFn: async () => fetchMyCollaboratingProjects(userId),
+    enabled: !!userId,
+  });
+
+  const publicProjects = useMemo(() => {
+    const lead = (leadingProjects || []).map((project) => ({
+      ...project,
+      roleLabel: 'Project Leader',
+    }));
+
+    const collab = (collaboratingProjects || []).map((project) => ({
+      ...project,
+      roleLabel: 'Team Member',
+    }));
+
+    const byId = new Map();
+    [...lead, ...collab].forEach((project) => {
+      if (!project?.id) return;
+      byId.set(project.id, project);
+    });
+
+    return Array.from(byId.values());
+  }, [leadingProjects, collaboratingProjects]);
+
+  const loading = userLoading || leadingLoading || collaboratingLoading;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-md p-8 text-center max-w-md w-full">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">User not found</h2>
+          <p className="text-gray-600 mb-6">This profile is not available.</p>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const joinedDate = user.created_at || user.joined_date;
+  const skills = user.skills || [];
+  const displayName = user.full_name || user.email || 'User';
 
   return (
-    <div className="min-h-screen bg-red-600 transition-colors">
+    <div className="min-h-screen bg-[#f3f3f3] transition-colors">
       <div className="container mx-auto px-4 py-8">
         {/* Back Button */}
         <motion.button
@@ -90,20 +120,24 @@ const UserProfilePage = () => {
                   className="h-32 w-32 rounded-2xl bg-red-600 flex items-center justify-center text-white text-4xl font-bold border-4 border-white shadow-xl"
                   whileHover={{ scale: 1.05, rotate: 5 }}
                 >
-                  {user.full_name.charAt(0)}
+                  {displayName.charAt(0).toUpperCase()}
                 </motion.div>
 
                 <div className="mb-4 md:mb-0">
-                  <h1 className="text-3xl font-bold text-gray-900 mb-1">{user.full_name}</h1>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-1">{displayName}</h1>
                   <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      {user.university}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      Member since {new Date(user.joined_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                    </span>
+                    {user.university && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-4 w-4" />
+                        {user.university}
+                      </span>
+                    )}
+                    {joinedDate && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        Member since {new Date(joinedDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-2">
                     <span className="inline-flex items-center px-3 py-1 bg-red-600 text-red-700 text-sm font-semibold rounded-full border border-red-200">
@@ -113,21 +147,20 @@ const UserProfilePage = () => {
                 </div>
               </div>
 
-              {/* Contact Button - Limited */}
-              <Link to={`/messages/${userId}`}>
-                <motion.button
-                  className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold  shadow-lg hover:shadow-xl"
-                  whileHover={{ scale: 1.05, y: -2 }}
-                  whileTap={{ scale: 0.95 }}
+              {/* Contact */}
+              {user.email && (
+                <motion.div
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-800 rounded-xl font-medium"
+                  whileHover={{ scale: 1.02 }}
                 >
-                  <Mail className="h-5 w-5" />
-                  Send Message
-                </motion.button>
-              </Link>
+                  <Mail className="h-5 w-5 text-red-600" />
+                  <span>{user.email}</span>
+                </motion.div>
+              )}
             </div>
 
             {/* Bio */}
-            <p className="text-gray-700 mb-6 max-w-3xl">{user.bio}</p>
+            <p className="text-gray-700 mb-6 max-w-3xl">{user.bio || 'No bio added yet.'}</p>
 
             {/* Stats - Limited */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -136,12 +169,12 @@ const UserProfilePage = () => {
                 <div className="text-sm text-gray-600">Projects</div>
               </div>
               <div className="text-center p-4 bg-red-600 rounded-xl">
-                <div className="text-2xl font-bold text-red-700">{user.skills.length}</div>
+                <div className="text-2xl font-bold text-red-700">{skills.length}</div>
                 <div className="text-sm text-gray-600">Skills</div>
               </div>
               <div className="text-center p-4 bg-red-600 rounded-xl">
-                <div className="text-2xl font-bold text-pink-700">{endorsements.length}</div>
-                <div className="text-sm text-gray-600">Endorsements</div>
+                <div className="text-2xl font-bold text-pink-700">{leadingProjects.length}</div>
+                <div className="text-sm text-gray-600">Led Projects</div>
               </div>
             </div>
           </div>
@@ -162,7 +195,8 @@ const UserProfilePage = () => {
                 Skills
               </h2>
               <div className="flex flex-wrap gap-2">
-                {user.skills.map((skill, index) => (
+                {skills.length === 0 && <p className="text-gray-500 text-sm">No skills listed yet.</p>}
+                {skills.map((skill, index) => (
                   <motion.span
                     key={index}
                     className="px-3 py-1.5 bg-red-600 text-red-700 text-sm font-medium rounded-full border border-red-200"
@@ -177,25 +211,15 @@ const UserProfilePage = () => {
               </div>
             </div>
 
-            {/* Endorsements - Limited */}
             <div className="bg-white rounded-2xl shadow-md p-6 transition-colors">
               <h2 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
-                <Award className="h-6 w-6 text-red-600" />
-                Top Endorsements
+                <Calendar className="h-6 w-6 text-red-600" />
+                Profile Details
               </h2>
-              <div className="space-y-3">
-                {endorsements.map((endorsement, index) => (
-                  <motion.div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-red-600 rounded-xl"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 + index * 0.1 }}
-                  >
-                    <span className="font-semibold text-gray-900">{endorsement.skill}</span>
-                    <span className="text-red-700 font-bold">{endorsement.count}</span>
-                  </motion.div>
-                ))}
+              <div className="space-y-2 text-sm text-gray-700">
+                <p><span className="font-semibold">Role:</span> {user.role || 'student'}</p>
+                <p><span className="font-semibold">University:</span> {user.university || 'Not specified'}</p>
+                <p><span className="font-semibold">Email:</span> {user.email || 'Not available'}</p>
               </div>
             </div>
           </motion.div>
@@ -207,24 +231,19 @@ const UserProfilePage = () => {
             transition={{ delay: 0.2 }}
             className="lg:col-span-2"
           >
-            {/* Tabs */}
             <div className="bg-white rounded-2xl shadow-md overflow-hidden transition-colors">
-              <div className="flex border-b border-gray-200">
-                <button
-                  onClick={() => setActiveTab('projects')}
-                  className={`flex-1 px-6 py-4 font-semibold transition-all ${
-                    activeTab === 'projects'
-                      ? 'bg-red-600 text-red-700 border-b-2 border-red-600'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Briefcase className="inline h-5 w-5 mr-2" />
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="font-semibold text-gray-900">
+                  <Briefcase className="inline h-5 w-5 mr-2 text-red-600" />
                   Public Projects ({publicProjects.length})
-                </button>
+                </h3>
               </div>
 
               <div className="p-6">
                 <div className="space-y-4">
+                  {publicProjects.length === 0 && (
+                    <p className="text-gray-500">No public projects found for this user yet.</p>
+                  )}
                   {publicProjects.map((project, index) => (
                     <motion.div
                       key={project.id}
@@ -236,20 +255,20 @@ const UserProfilePage = () => {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <h3 className="font-bold text-gray-900 mb-1">{project.title}</h3>
-                          <p className="text-sm text-gray-600 mb-2">{project.description}</p>
+                          <h3 className="font-bold text-gray-900 mb-1">{project.title || 'Untitled project'}</h3>
+                          <p className="text-sm text-gray-600 mb-2">{project.description || 'No description'}</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          project.status === 'Active' 
+                          (project.status || '').toLowerCase() === 'active'
                             ? 'bg-green-100 text-green-700'
                             : 'bg-gray-100 text-gray-700'
                         }`}>
-                          {project.status}
+                          {project.status || 'unknown'}
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-500">
-                        <span className="font-medium text-red-600">{project.role}</span>
-                        <span>Team of {project.team_size}</span>
+                        <span className="font-medium text-red-600">{project.roleLabel || 'Contributor'}</span>
+                        <span>Team of {project.current_team_size || project.team_size || 1}</span>
                       </div>
                     </motion.div>
                   ))}
