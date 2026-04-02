@@ -642,4 +642,41 @@ export const toggleProjectSave = async (userId, projectId) => {
   }
 };
 
+/**
+ * Delete ALL likes for a user — used for cleanup.
+ */
+export const clearAllUserLikes = async (userId) => {
+  if (!userId) return;
+  const q = query(collection(db, LIKES_COLLECTION), where('user_id', '==', userId));
+  const snap = await getDocs(q);
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+};
+
+/**
+ * Delete ALL saves for a user — used for cleanup.
+ */
+export const clearAllUserSaves = async (userId) => {
+  if (!userId) return;
+  const q = query(collection(db, SAVES_COLLECTION), where('user_id', '==', userId));
+  const snap = await getDocs(q);
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+};
+
+/**
+ * Fetch how many users have liked each project.
+ * Returns { [projectId]: count }
+ */
+export const fetchProjectLikeCounts = async (projectIds) => {
+  if (!projectIds?.length) return {};
+  const counts = {};
+  await Promise.all(
+    projectIds.map(async (pid) => {
+      const q = query(collection(db, LIKES_COLLECTION), where('project_id', '==', pid));
+      const snap = await getDocs(q);
+      counts[pid] = snap.size;
+    })
+  );
+  return counts;
+};
+
 

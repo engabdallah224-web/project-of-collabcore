@@ -12,6 +12,9 @@ import {
   fetchUserSaves,
   toggleProjectLike,
   toggleProjectSave,
+  clearAllUserLikes,
+  clearAllUserSaves,
+  fetchProjectLikeCounts,
 } from '../../services/firestoreService';
 
 const DiscoveryFeed = ({ projects }) => {
@@ -22,16 +25,38 @@ const DiscoveryFeed = ({ projects }) => {
   const [likedProjects, setLikedProjects] = useState(new Set());
   const [savedProjects, setSavedProjects] = useState(new Set());
   const [appliedProjects, setAppliedProjects] = useState(new Set());
+  const [likeCounts, setLikeCounts] = useState({});
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyError, setApplyError] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
 
   // On mount / when user changes, load liked + saved project IDs from Firestore
+  // Also clear any stale demo data on first ever load (one-time cleanup)
   useEffect(() => {
     if (!user?.uid) return;
-    fetchUserLikes(user.uid).then((ids) => setLikedProjects(new Set(ids))).catch(() => {});
-    fetchUserSaves(user.uid).then((ids) => setSavedProjects(new Set(ids))).catch(() => {});
+    const CLEARED_KEY = `likes_cleared_${user.uid}`;
+    if (!localStorage.getItem(CLEARED_KEY)) {
+      // One-time cleanup of any stale/demo likes+saves
+      Promise.all([
+        clearAllUserLikes(user.uid),
+        clearAllUserSaves(user.uid),
+      ]).then(() => {
+        localStorage.setItem(CLEARED_KEY, '1');
+        setLikedProjects(new Set());
+        setSavedProjects(new Set());
+      }).catch(() => {});
+    } else {
+      fetchUserLikes(user.uid).then((ids) => setLikedProjects(new Set(ids))).catch(() => {});
+      fetchUserSaves(user.uid).then((ids) => setSavedProjects(new Set(ids))).catch(() => {});
+    }
   }, [user?.uid]);
+
+  // Fetch real like counts for all displayed projects
+  useEffect(() => {
+    if (!projects.length) return;
+    const ids = projects.map((p) => p.id);
+    fetchProjectLikeCounts(ids).then(setLikeCounts).catch(() => {});
+  }, [projects]);
 
   // On mount / when projects or user changes, check which ones the user already applied to
   useEffect(() => {
@@ -104,12 +129,14 @@ const DiscoveryFeed = ({ projects }) => {
 
   const toggleLike = async (projectId) => {
     if (!user?.uid) return;
+    const wasLiked = likedProjects.has(projectId);
     // Optimistic update
     setLikedProjects(prev => {
       const next = new Set(prev);
       if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
       return next;
     });
+    setLikeCounts(prev => ({ ...prev, [projectId]: Math.max(0, (prev[projectId] ?? 0) + (wasLiked ? -1 : 1)) }));
     try {
       await toggleProjectLike(user.uid, projectId);
     } catch {
@@ -119,6 +146,7 @@ const DiscoveryFeed = ({ projects }) => {
         if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
         return next;
       });
+      setLikeCounts(prev => ({ ...prev, [projectId]: Math.max(0, (prev[projectId] ?? 0) + (wasLiked ? 1 : -1)) }));
     }
   };
 
@@ -244,7 +272,16 @@ const DiscoveryFeed = ({ projects }) => {
                     <div className="flex items-center gap-1 text-gray-500">
                       <Clock className="h-3 w-3" />
                       <span className="text-xs">
-                        {Math.floor(Math.random() * 24) + 1}h ago
+                        {project.created_at
+                          ? (() => {
+                              const diff = Date.now() - new Date(project.created_at).getTime();
+                              const mins = Math.floor(diff / 60000);
+                              if (mins < 60) return `${mins}m ago`;
+                              const hrs = Math.floor(mins / 60);
+                              if (hrs < 24) return `${hrs}h ago`;
+                              return `${Math.floor(hrs / 24)}d ago`;
+                            })()
+                          : ''}
                       </span>
                     </div>
 
@@ -260,7 +297,7 @@ const DiscoveryFeed = ({ projects }) => {
                       </div>
                       <div className="text-center bg-purple-50 px-2 py-1 rounded">
                         <div className="font-bold text-purple-600">
-                          {Math.floor(Math.random() * 20) + 5}
+                          {likeCounts[project.id] ?? 0}
                         </div>
                         <div className="text-gray-600">Interest</div>
                       </div>
