@@ -6,11 +6,13 @@ import {
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchMeetingsDirect, deleteMeetingDirect, generateJitsiUrl, createMeetingDirect } from '../../services/firestoreService';
+import VideoCallModal from '../calls/VideoCallModal';
 
 const MeetingsPanel = ({ projectId, teamMembers }) => {
   const [activeTab, setActiveTab] = useState('upcoming');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
   const queryClient = useQueryClient();
 
   // Fetch all meetings from Firestore
@@ -29,10 +31,10 @@ const MeetingsPanel = ({ projectId, teamMembers }) => {
     },
   });
 
-  // Join meeting — just open the URL
+  // Join meeting — open embedded inside the app
   const handleJoinMeeting = (meeting) => {
     if (meeting.meeting_url) {
-      window.open(meeting.meeting_url, '_blank');
+      setActiveCall({ url: meeting.meeting_url, title: meeting.title || 'Meeting' });
     }
   };
 
@@ -323,6 +325,17 @@ const MeetingsPanel = ({ projectId, teamMembers }) => {
           }}
         />
       )}
+
+      {/* Embedded video call */}
+      <AnimatePresence>
+        {activeCall && (
+          <VideoCallModal
+            roomUrl={activeCall.url}
+            callTitle={activeCall.title}
+            onClose={() => setActiveCall(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

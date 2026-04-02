@@ -1,22 +1,23 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Video, Phone, Calendar, X, Plus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { generateJitsiUrl, createMeetingDirect } from '../../services/firestoreService';
+import VideoCallModal from './VideoCallModal';
 
 export default function CallButtons({ projectId, teamMembers }) {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [activeCall, setActiveCall] = useState(null); // { url, title }
   const queryClient = useQueryClient();
 
-  // Instant call — generate Jitsi URL directly, no backend needed
   const handleInstantCall = async (callType) => {
     const suffix = `${callType}-${Date.now()}`;
     const url = generateJitsiUrl(projectId, suffix);
-    // Save a record to Firestore so team can see it in the Meetings panel
+    const title = callType === 'video' ? 'Instant Video Call' : 'Instant Audio Call';
     try {
       await createMeetingDirect({
         projectId,
-        title: callType === 'video' ? 'Instant Video Call' : 'Instant Audio Call',
+        title,
         meeting_type: 'other',
         scheduled_at: new Date().toISOString(),
         duration_minutes: 60,
@@ -26,9 +27,9 @@ export default function CallButtons({ projectId, teamMembers }) {
       });
       queryClient.invalidateQueries(['project-meetings', projectId]);
     } catch {
-      // silent — still open call even if Firestore save fails
+      // silent — still open call
     }
-    window.open(url, '_blank');
+    setActiveCall({ url, title });
   };
 
   return (
@@ -70,6 +71,17 @@ export default function CallButtons({ projectId, teamMembers }) {
           <span className="hidden sm:inline text-sm font-medium">Schedule</span>
         </motion.button>
       </div>
+
+      {/* Embedded video call overlay */}
+      <AnimatePresence>
+        {activeCall && (
+          <VideoCallModal
+            roomUrl={activeCall.url}
+            callTitle={activeCall.title}
+            onClose={() => setActiveCall(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Schedule Meeting Modal */}
       {showScheduleModal && (
