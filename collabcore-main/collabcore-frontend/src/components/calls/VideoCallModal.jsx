@@ -1,106 +1,32 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Maximize2, Minimize2, Video, Mic, Monitor, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 /**
- * Embeds a Jitsi Meet call directly inside the app using the Jitsi External API.
- * Supports: video, audio, screen share, in-call chat — no new tab needed.
+ * Embeds a Jitsi Meet call using a direct iframe src — works on all browsers
+ * including mobile Safari/Chrome without External API WebRTC restrictions.
  */
 export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
-  const containerRef = useRef(null);
-  const apiRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { user } = useAuth();
 
-  // Extract room name from URL  e.g. https://meet.jit.si/CollabCore-abc → CollabCore-abc
-  const roomName = roomUrl.replace('https://meet.jit.si/', '');
-  const displayName = user?.full_name || user?.displayName || user?.email?.split('@')[0] || 'CollabCore User';
-  const userEmail = user?.email || '';
+  // Extract and sanitize room name → no spaces, alphanumeric+dashes only
+  const rawRoom = roomUrl
+    .replace('https://meet.jit.si/', '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9-]/g, '');
+  const displayName = encodeURIComponent(user?.full_name || user?.displayName || user?.email?.split('@')[0] || 'CollabCore User');
 
-  useEffect(() => {
-    const loadApi = () => {
-      if (!containerRef.current) return;
-      // eslint-disable-next-line no-undef
-      apiRef.current = new JitsiMeetExternalAPI('meet.jit.si', {
-        roomName,
-        parentNode: containerRef.current,
-        width: '100%',
-        height: '100%',
-        userInfo: {
-          displayName,
-          email: userEmail,
-        },
-        configOverwrite: {
-          startWithVideoMuted: false,
-          startWithAudioMuted: false,
-          disableDeepLinking: true,
-          enableWelcomePage: false,
-          prejoinPageEnabled: false,   // skip name-entry page — auto join
-          toolbarButtons: [
-            'microphone',
-            'camera',
-            'desktop',        // screen share
-            'chat',
-            'participants-pane',
-            'tileview',
-            'hangup',
-            'raisehand',
-            'settings',
-            'videobackgroundblur',
-          ],
-        },
-        interfaceConfigOverwrite: {
-          SHOW_JITSI_WATERMARK: false,
-          SHOW_WATERMARK_FOR_GUESTS: false,
-          SHOW_BRAND_WATERMARK: false,
-          DEFAULT_BACKGROUND: '#111111',
-          TOOLBAR_ALWAYS_VISIBLE: true,
-          MOBILE_APP_PROMO: false,
-        },
-      });
-
-      // ── CRITICAL: grant camera + mic + screen share permissions on the iframe ──
-      const iframe = apiRef.current.getIFrame();
-      if (iframe) {
-        iframe.allow = 'camera; microphone; display-capture; autoplay; clipboard-write; fullscreen';
-        iframe.style.border = 'none';
-      }
-
-      apiRef.current.addEventListener('videoConferenceLeft', () => {
-        onClose();
-      });
-    };
-
-    const existingScript = document.getElementById('jitsi-api-script');
-    if (existingScript && window.JitsiMeetExternalAPI) {
-      loadApi();
-    } else if (existingScript) {
-      existingScript.addEventListener('load', loadApi);
-    } else {
-      const script = document.createElement('script');
-      script.id = 'jitsi-api-script';
-      script.src = 'https://meet.jit.si/external_api.js';
-      script.async = true;
-      script.onload = loadApi;
-      document.head.appendChild(script);
-    }
-
-    return () => {
-      if (apiRef.current) {
-        apiRef.current.dispose();
-        apiRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomName]);
+  // Build URL with config params — skip prejoin, auto-join
+  const iframeSrc = `https://meet.jit.si/${rawRoom}#userInfo.displayName="${displayName}"&config.prejoinPageEnabled=false&config.startWithVideoMuted=false&config.startWithAudioMuted=false&config.disableDeepLinking=true&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.MOBILE_APP_PROMO=false`;
 
   return (
     <motion.div
       className={`fixed z-[999] bg-black flex flex-col shadow-2xl ${
         isFullscreen
           ? 'inset-0 rounded-none'
-          : 'inset-4 md:inset-8 rounded-2xl'
+          : 'inset-0 md:inset-8 md:rounded-2xl'
       }`}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -108,7 +34,7 @@ export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
       transition={{ duration: 0.2 }}
     >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 rounded-t-2xl flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 md:rounded-t-2xl flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="bg-red-600 p-1 rounded-lg">
             <Video className="h-4 w-4 text-white" />
@@ -148,8 +74,15 @@ export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
         </div>
       </div>
 
-      {/* Jitsi iframe container */}
-      <div ref={containerRef} className="flex-1 w-full min-h-0" />
+      {/* Direct iframe — no External API, works on all mobile browsers */}
+      <iframe
+        src={iframeSrc}
+        allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen; speaker-selection"
+        allowFullScreen
+        className="flex-1 w-full min-h-0 border-0"
+        style={{ border: 'none' }}
+        title={callTitle}
+      />
     </motion.div>
   );
 }
