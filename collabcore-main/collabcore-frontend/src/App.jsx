@@ -1,9 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
+import { useAuth } from './hooks/useAuth';
 import Header from './components/common/Header';
 import Footer from './components/common/Footer';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingSpinner from './components/common/LoadingSpinner';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -35,142 +37,59 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppContent() {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <div className="min-h-screen flex flex-col bg-white">
+        <Header />
+        <main className="flex-grow">
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+            {/* Protected Routes */}
+            <Route path="/discovery" element={<ProtectedRoute><DiscoveryPage /></ProtectedRoute>} />
+            <Route path="/projects" element={<ProtectedRoute><MyProjectsPage /></ProtectedRoute>} />
+            <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+            <Route path="/profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
+            <Route path="/projects/create" element={<ProtectedRoute><CreateProjectPage /></ProtectedRoute>} />
+            <Route path="/projects/:projectId" element={<ProtectedRoute><ProjectDetailsPage /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/workspace" element={<ProtectedRoute><ProjectWorkspace /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/applications" element={<ProtectedRoute><ManageApplicationsPage /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/analytics" element={<ProtectedRoute><MeetingAnalyticsPage /></ProtectedRoute>} />
+            <Route path="/projects/:projectId/settings" element={<ProtectedRoute><ProjectSettingsPage /></ProtectedRoute>} />
+            <Route path="/users/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
+    </ErrorBoundary>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
-            <ErrorBoundary>
-            <div className="min-h-screen flex flex-col bg-white">
-              <Header />
-              <main className="flex-grow">
-                <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
-                {/* Protected Routes - Placeholders for now */}
-                <Route
-                  path="/discovery"
-                  element={
-                    <ProtectedRoute>
-                      <DiscoveryPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects"
-                  element={
-                    <ProtectedRoute>
-                      <MyProjectsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/search"
-                  element={
-                    <ProtectedRoute>
-                      <SearchPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <ProtectedRoute>
-                      <ProfilePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile/edit"
-                  element={
-                    <ProtectedRoute>
-                      <EditProfilePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/create"
-                  element={
-                    <ProtectedRoute>
-                      <CreateProjectPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId"
-                  element={
-                    <ProtectedRoute>
-                      <ProjectDetailsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId/workspace"
-                  element={
-                    <ProtectedRoute>
-                      <ProjectWorkspace />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId/applications"
-                  element={
-                    <ProtectedRoute>
-                      <ManageApplicationsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId/tasks"
-                  element={
-                    <ProtectedRoute>
-                      <TasksPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId/analytics"
-                  element={
-                    <ProtectedRoute>
-                      <MeetingAnalyticsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/projects/:projectId/settings"
-                  element={
-                    <ProtectedRoute>
-                      <ProjectSettingsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/users/:userId"
-                  element={
-                    <ProtectedRoute>
-                      <UserProfilePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/notifications"
-                  element={
-                    <ProtectedRoute>
-                      <NotificationsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Catch all - redirect to home */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </main>
-              <Footer />
-            </div>
-            </ErrorBoundary>
+          <AppContent />
         </AuthProvider>
       </Router>
     </QueryClientProvider>
