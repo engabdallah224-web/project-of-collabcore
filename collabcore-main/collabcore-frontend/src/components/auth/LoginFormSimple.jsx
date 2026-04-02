@@ -36,18 +36,22 @@ const LoginFormSimple = () => {
         ? await loginWithGoogle()
         : await loginWithGithub();
 
+      if (response?.redirecting) {
+        // Page will redirect to OAuth provider; auth state handled on return
+        return;
+      }
+
       authLogin(response.user);
       navigate('/discovery');
     } catch (error) {
       console.error(`${provider} login error:`, error);
       if (error.code === 'auth/popup-closed-by-user') {
-        setApiError('Login popup was closed before completing sign-in.');
+        setApiError('Login popup was closed. Please try again.');
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         setApiError('This email is already linked to another sign-in method.');
       } else {
         setApiError(error.message || 'Social login failed. Please try again.');
       }
-    } finally {
       setSocialLoading('');
     }
   };

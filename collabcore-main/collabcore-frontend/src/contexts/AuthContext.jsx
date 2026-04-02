@@ -1,6 +1,8 @@
 import { createContext, useState, useEffect, useCallback } from 'react';
 import { subscribeToAuthChanges, logout as logoutService } from '../services/authService';
 import { auth } from '../config/firebase';
+import { getRedirectResult } from 'firebase/auth';
+import { syncFirebaseProfileToFirestore } from '../services/firestoreService';
 
 export const AuthContext = createContext(null);
 
@@ -21,6 +23,15 @@ export const AuthProvider = ({ children }) => {
       }
       setLoading(false);
     });
+
+    // Handle redirect result from signInWithRedirect (popup-blocked fallback)
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          await syncFirebaseProfileToFirestore(result.user);
+        }
+      })
+      .catch(() => { /* ignore redirect errors */ });
 
     // Cleanup subscription
     return () => unsubscribe();

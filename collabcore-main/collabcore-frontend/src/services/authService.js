@@ -6,6 +6,7 @@ import {
   GoogleAuthProvider,
   GithubAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
   sendEmailVerification,
   sendPasswordResetEmail,
   reload,
@@ -215,7 +216,16 @@ export const login = async (email, password) => {
 export const loginWithGoogle = async () => {
   try {
     const provider = new GoogleAuthProvider();
-    const userCredential = await signInWithPopup(auth, provider);
+    let userCredential;
+    try {
+      userCredential = await signInWithPopup(auth, provider);
+    } catch (popupError) {
+      if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/popup-closed-by-user') {
+        await signInWithRedirect(auth, provider);
+        return { redirecting: true };
+      }
+      throw popupError;
+    }
     const user = userCredential.user;
     await syncFirebaseProfileToFirestore(user);
 
@@ -257,7 +267,16 @@ export const loginWithGithub = async () => {
   try {
     const provider = new GithubAuthProvider();
     provider.addScope('user:email');
-    const userCredential = await signInWithPopup(auth, provider);
+    let userCredential;
+    try {
+      userCredential = await signInWithPopup(auth, provider);
+    } catch (popupError) {
+      if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/popup-closed-by-user') {
+        await signInWithRedirect(auth, provider);
+        return { redirecting: true };
+      }
+      throw popupError;
+    }
     const user = userCredential.user;
     await syncFirebaseProfileToFirestore(user);
 
