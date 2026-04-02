@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Maximize2, Minimize2, Video, Mic, Monitor, MessageSquare } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 
 /**
  * Embeds a Jitsi Meet call directly inside the app using the Jitsi External API.
@@ -10,14 +11,14 @@ export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
   const containerRef = useRef(null);
   const apiRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [apiReady, setApiReady] = useState(false);
+  const { user } = useAuth();
 
   // Extract room name from URL  e.g. https://meet.jit.si/CollabCore-abc → CollabCore-abc
   const roomName = roomUrl.replace('https://meet.jit.si/', '');
+  const displayName = user?.full_name || user?.displayName || user?.email?.split('@')[0] || 'CollabCore User';
+  const userEmail = user?.email || '';
 
   useEffect(() => {
-    // Load Jitsi External API script dynamically
-    const existingScript = document.getElementById('jitsi-api-script');
     const loadApi = () => {
       if (!containerRef.current) return;
       // eslint-disable-next-line no-undef
@@ -26,12 +27,16 @@ export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
         parentNode: containerRef.current,
         width: '100%',
         height: '100%',
+        userInfo: {
+          displayName,
+          email: userEmail,
+        },
         configOverwrite: {
           startWithVideoMuted: false,
           startWithAudioMuted: false,
           disableDeepLinking: true,
           enableWelcomePage: false,
-          prejoinPageEnabled: true,
+          prejoinPageEnabled: false,   // skip name-entry page — auto join
           toolbarButtons: [
             'microphone',
             'camera',
@@ -55,19 +60,23 @@ export default function VideoCallModal({ roomUrl, callTitle, onClose }) {
         },
       });
 
+      // ── CRITICAL: grant camera + mic + screen share permissions on the iframe ──
+      const iframe = apiRef.current.getIFrame();
+      if (iframe) {
+        iframe.allow = 'camera; microphone; display-capture; autoplay; clipboard-write; fullscreen';
+        iframe.style.border = 'none';
+      }
+
       apiRef.current.addEventListener('videoConferenceLeft', () => {
         onClose();
       });
-
-      setApiReady(true);
     };
 
-    if (existingScript) {
-      if (window.JitsiMeetExternalAPI) {
-        loadApi();
-      } else {
-        existingScript.addEventListener('load', loadApi);
-      }
+    const existingScript = document.getElementById('jitsi-api-script');
+    if (existingScript && window.JitsiMeetExternalAPI) {
+      loadApi();
+    } else if (existingScript) {
+      existingScript.addEventListener('load', loadApi);
     } else {
       const script = document.createElement('script');
       script.id = 'jitsi-api-script';
