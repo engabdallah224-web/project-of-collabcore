@@ -36,8 +36,8 @@ const Header = () => {
           <Link to="/" className="flex items-center space-x-2 md:space-x-3 group flex-shrink-0">
             <motion.div
               className="relative"
-              whileHover={{ rotate: 360 }}
-              transition={{ duration: 0.6, ease: "easeInOut" }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
             >
               <div className="absolute inset-0 bg-red-600 rounded-xl blur-lg opacity-30 group-hover:opacity-50 transition-opacity"></div>
               <div className="relative bg-red-600 p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-lg">
@@ -45,9 +45,13 @@ const Header = () => {
               </div>
             </motion.div>
             <div className="flex items-center">
-              <span className="text-lg md:text-2xl font-bold text-white">
+              <motion.span
+                className="text-lg md:text-2xl font-bold"
+                animate={{ color: ['#ffffff', '#ef4444', '#ff6b6b', '#ffffff'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              >
                 CollabCore
-              </span>
+              </motion.span>
               <motion.div
                 animate={{ 
                   rotate: [0, 10, -10, 0],
