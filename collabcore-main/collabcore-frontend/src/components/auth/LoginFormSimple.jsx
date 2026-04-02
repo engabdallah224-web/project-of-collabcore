@@ -85,12 +85,12 @@ const LoginFormSimple = () => {
 
   return (
     <motion.div 
-      className="w-full max-w-md"
+      className="w-full max-w-md mx-auto"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="bg-white border-2 border-red-600 rounded-3xl shadow-2xl shadow-red-900/50 p-10 relative overflow-hidden">
+      <div className="bg-white border-2 border-red-600 rounded-2xl sm:rounded-3xl shadow-2xl shadow-red-900/20 p-6 sm:p-10 relative overflow-hidden">
         {/* Decorative gradient blob */}
         <motion.div 
           className="absolute -top-20 -right-20 w-40 h-40 bg-red-600 rounded-full blur-3xl opacity-20"
@@ -118,8 +118,8 @@ const LoginFormSimple = () => {
           >
             <Sparkles className="h-8 w-8 text-gray-900" />
           </motion.div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back!</h2>
-          <p className="text-gray-700">Sign in to continue your journey</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Welcome Back!</h2>
+          <p className="text-gray-700 text-sm sm:text-base">Sign in to continue your journey</p>
         </motion.div>
 
         <AnimatePresence mode="wait">

@@ -112,7 +112,7 @@ const RegisterFormSimple = () => {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 20 }}
       >
-        <div className="bg-white border-2 border-red-600 rounded-3xl shadow-2xl shadow-red-900/50 p-12 text-center">
+        <div className="bg-white border-2 border-red-600 rounded-2xl sm:rounded-3xl shadow-2xl shadow-red-900/20 p-8 sm:p-12 text-center">
           <motion.div 
             className="inline-flex items-center justify-center w-20 h-20 bg-red-600 rounded-full mb-6 shadow-lg"
             initial={{ scale: 0, rotate: -180 }}
@@ -144,12 +144,12 @@ const RegisterFormSimple = () => {
 
   return (
     <motion.div 
-      className="w-full max-w-md"
+      className="w-full max-w-md mx-auto"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="bg-white border-2 border-red-600 rounded-3xl shadow-2xl shadow-red-900/50 p-10 relative overflow-hidden">
+      <div className="bg-white border-2 border-red-600 rounded-2xl sm:rounded-3xl shadow-2xl shadow-red-900/20 p-6 sm:p-10 relative overflow-hidden">
         {/* Decorative gradient blob */}
         <motion.div
           className="absolute -top-20 -right-20 w-40 h-40 bg-red-600 rounded-full blur-3xl opacity-20"
@@ -178,8 +178,8 @@ const RegisterFormSimple = () => {
           >
             <Sparkles className="h-8 w-8 text-gray-900" />
           </motion.div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Join CollabCore</h2>
-          <p className="text-gray-600">Step {step} of 3</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Join CollabCore</h2>
+          <p className="text-gray-600 text-sm sm:text-base">Step {step} of 3</p>
         </motion.div>
 
         {/* Progress Bar */}

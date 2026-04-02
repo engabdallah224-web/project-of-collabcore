@@ -122,7 +122,7 @@ const Home = () => {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="bg-black from-blue-600 via-purple-600 to-purple-700 text-white py-20 px-4 overflow-hidden relative">
+      <section className="bg-black from-blue-600 via-purple-600 to-purple-700 text-white py-12 md:py-20 px-4 overflow-hidden relative">
         {/* Particles Background - CSS Fallback */}
         <div style={{
           position: 'absolute',
@@ -188,7 +188,7 @@ const Home = () => {
           }}></div>
         </div>
         <div className="container mx-auto max-w-6xl relative" style={{ zIndex: 20 }}>
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
             <motion.div
               initial="hidden"
               animate="visible"
@@ -196,13 +196,13 @@ const Home = () => {
             >
               <motion.h1 
                 variants={itemVariants}
-                className="text-5xl md:text-6xl font-bold mb-6 leading-tight"
+                className="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 md:mb-6 leading-tight"
               >
                 Connect. Collaborate. Create.
               </motion.h1>
               <motion.p 
                 variants={itemVariants}
-                className="text-xl text-blue-100 mb-8"
+                className="text-base sm:text-xl text-blue-100 mb-6 md:mb-8"
               >
                 The premier platform for students to discover projects, find teammates, 
                 and build amazing things together.
@@ -278,7 +278,7 @@ const Home = () => {
               </motion.div>
               <motion.div 
                 variants={itemVariants}
-                className="mt-8 flex items-center space-x-6 text-blue-100"
+                className="mt-6 md:mt-8 flex flex-wrap items-center gap-4 sm:gap-6 text-blue-100 text-sm sm:text-base"
               >
                 <div className="flex items-center">
                   <CheckCircle className="h-5 w-5 mr-2" />
@@ -294,11 +294,11 @@ const Home = () => {
               initial="hidden"
               animate="visible"
               variants={scaleIn}
-              className="relative"
+              className="relative hidden sm:block"
             >
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 sm:p-8 border border-white/20">
                 <motion.div 
-                  className="grid grid-cols-2 gap-4"
+                  className="grid grid-cols-2 gap-3 sm:gap-4"
                   variants={containerVariants}
                 >
                   {[
@@ -311,11 +311,11 @@ const Home = () => {
                       key={index}
                       variants={itemVariants}
                       whileHover={{ scale: 1.05, backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
-                      className="bg-white/10 p-6 rounded-xl"
+                      className="bg-white/10 p-4 sm:p-6 rounded-xl"
                     >
-                      <stat.icon className="h-8 w-8 mb-2" />
-                      <div className="text-2xl font-bold">{stat.count}</div>
-                      <div className="text-blue-100">{stat.label}</div>
+                      <stat.icon className="h-6 w-6 sm:h-8 sm:w-8 mb-2" />
+                      <div className="text-xl sm:text-2xl font-bold">{stat.count}</div>
+                      <div className="text-blue-100 text-sm sm:text-base">{stat.label}</div>
                     </motion.div>
                   ))}
                 </motion.div>
@@ -326,25 +326,25 @@ const Home = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4 bg-white">
+      <section className="py-12 md:py-20 px-4 bg-white">
         <div className="container mx-auto max-w-6xl">
           <motion.div 
             initial="hidden"
             whileInView="visible"
             viewport={{ once: false, amount: 0.3 }}
             variants={fadeInUp}
-            className="text-center mb-16"
+            className="text-center mb-10 md:mb-16"
           >
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">
               Everything you need to collaborate
             </h2>
-            <p className="text-xl text-gray-600">
+            <p className="text-base sm:text-xl text-gray-600">
               Powerful features designed for student collaboration
             </p>
           </motion.div>
 
           <motion.div 
-            className="grid md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8"
             initial="hidden"
             whileInView="visible"
             viewport={{ once: false, amount: 0.2 }}
@@ -410,7 +410,7 @@ const Home = () => {
                 key={index}
                 variants={itemVariants}
                 whileHover={{ y: -8, transition: { duration: 0.3 } }}
-                className={`${feature.gradient} p-8 rounded-2xl cursor-pointer`}
+                className={`${feature.gradient} p-5 sm:p-8 rounded-2xl cursor-pointer`}
                 style={{ backgroundColor: 'rgba(200, 16, 47, 0.02)' }}
               >
                 <motion.div
@@ -434,25 +434,25 @@ const Home = () => {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-20 px-4 bg-white">
+      <section className="py-12 md:py-20 px-4 bg-white">
         <div className="container mx-auto max-w-6xl">
           <motion.div 
             initial="hidden"
             whileInView="visible"
             viewport={{ once: false, amount: 0.3 }}
             variants={fadeInUp}
-            className="text-center mb-16"
+            className="text-center mb-10 md:mb-16"
           >
-            <h2 className="text-4xl font-bold text-black mb-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-black mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-gray-700">
+            <p className="text-base sm:text-xl text-gray-700">
               Start collaborating in three simple steps
             </p>
           </motion.div>
 
           <motion.div 
-            className="grid md:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
             initial="hidden"
             whileInView="visible"
             viewport={{ once: false, amount: 0.2 }}
@@ -503,7 +503,7 @@ const Home = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-4 bg-black text-white relative overflow-hidden">
+      <section className="py-12 md:py-20 px-4 bg-black text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute inset-0" style={{
             backgroundImage: 'radial-gradient(circle at 2px 2px, red 1px, transparent 0)',
@@ -518,7 +518,7 @@ const Home = () => {
           variants={fadeInUp}
         >
           <motion.h2 
-            className="text-4xl md:text-5xl font-bold mb-6"
+            className="text-2xl sm:text-3xl md:text-5xl font-bold mb-4 md:mb-6"
             initial={{ opacity: 0, scale: 0.8 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: false }}
@@ -527,7 +527,7 @@ const Home = () => {
             Ready to start collaborating?
           </motion.h2>
           <motion.p 
-            className="text-xl text-gray-300 mb-8"
+            className="text-base sm:text-xl text-gray-300 mb-8"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: false }}
