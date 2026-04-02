@@ -11,30 +11,61 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectAPI, applicationAPI, authAPI, userAPI } from '../services/api';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatStatus, formatCategory } from '../utils/helpers';
+import {
+  fetchProjectById,
+  fetchUserProfile,
+  createApplicationInFirestore,
+  checkExistingApplication,
+  createNotification,
+} from '../services/firestoreService';
+import { useAuth } from '../hooks/useAuth';
+import { auth } from '../config/firebase';
 
 const ProjectDetailsPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user: authUser } = useAuth();
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applicationMessage, setApplicationMessage] = useState('');
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState('');
+  const [applySuccess, setApplySuccess] = useState(false);
+  const [hasAppliedDirect, setHasAppliedDirect] = useState(false);
 
-  // Fetch project details
+  // Fetch project details — try backend first, fall back to Firestore
   const { data: projectData, isLoading: projectLoading } = useQuery({
     queryKey: ['project', projectId],
     queryFn: async () => {
-      const response = await projectAPI.getProject(projectId);
-      return response.data.project;
+      try {
+        const response = await projectAPI.getProject(projectId);
+        return response.data.project;
+      } catch (error) {
+        if (!error.response) {
+          // Backend unreachable — use Firestore directly
+          return await fetchProjectById(projectId);
+        }
+        throw error;
+      }
     },
     enabled: !!projectId
   });
 
-  // Fetch current user
+  // Fetch current user — try backend first, fall back to Firestore
   const { data: userData } = useQuery({
     queryKey: ['current-user'],
     queryFn: async () => {
-      const response = await authAPI.getMe();
-      return response.data.user;
+      try {
+        const response = await authAPI.getMe();
+        return response.data.user;
+      } catch (error) {
+        if (!error.response) {
+          const uid = auth.currentUser?.uid;
+          if (uid) return await fetchUserProfile(uid);
+          return null;
+        }
+        throw error;
+      }
     }
   });
 
@@ -43,11 +74,25 @@ const ProjectDetailsPage = () => {
     queryKey: ['user-applications', userData?.uid],
     queryFn: async () => {
       if (!userData?.uid) return [];
-      const response = await userAPI.getUserApplications(userData.uid);
-      return response.data.applications || [];
+      try {
+        const response = await userAPI.getUserApplications(userData.uid);
+        return response.data.applications || [];
+      } catch {
+        // Fallback: check Firestore directly
+        const existing = await checkExistingApplication(projectId, userData.uid).catch(() => null);
+        if (existing) setHasAppliedDirect(true);
+        return [];
+      }
     },
     enabled: !!userData?.uid
   });
+
+  // Also check Firestore for application on mount
+  React.useEffect(() => {
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    if (!uid || !projectId) return;
+    checkExistingApplication(projectId, uid).then((r) => { if (r) setHasAppliedDirect(true); }).catch(() => {});
+  }, [authUser?.uid, projectId]);
 
   // Fetch project applications to get team members
   const { data: projectApplications } = useQuery({
@@ -63,7 +108,7 @@ const ProjectDetailsPage = () => {
     enabled: !!projectId
   });
 
-  // Apply mutation
+  // Apply mutation — try backend first, fall back to Firestore
   const applyMutation = useMutation({
     mutationFn: (data) => applicationAPI.createApplication(data),
     onSuccess: () => {
@@ -77,15 +122,44 @@ const ProjectDetailsPage = () => {
     }
   });
 
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!applicationMessage.trim()) {
       alert('Please write a message');
       return;
     }
-    applyMutation.mutate({
-      project_id: projectId,
-      message: applicationMessage
-    });
+    const uid = authUser?.uid || auth.currentUser?.uid;
+    // Try Firestore direct first (works on mobile/Vercel)
+    if (uid) {
+      setApplyLoading(true);
+      setApplyError('');
+      try {
+        await createApplicationInFirestore({
+          projectId,
+          userId: uid,
+          message: applicationMessage.trim(),
+          applicantName: authUser?.full_name || authUser?.email || '',
+        });
+        if (projectData?.owner_id) {
+          await createNotification(projectData.owner_id, {
+            title: 'New Application',
+            message: `${authUser?.full_name || authUser?.email || 'Someone'} applied to "${projectData.title}".`,
+            type: 'application',
+            link: `/projects/${projectId}/applications`,
+          }).catch(() => {});
+        }
+        setHasAppliedDirect(true);
+        setApplySuccess(true);
+        setApplicationMessage('');
+        setTimeout(() => { setShowApplyModal(false); setApplySuccess(false); }, 1800);
+      } catch (err) {
+        setApplyError(err.message || 'Failed to submit application.');
+      } finally {
+        setApplyLoading(false);
+      }
+      return;
+    }
+    // Backend fallback
+    applyMutation.mutate({ project_id: projectId, message: applicationMessage });
   };
 
   if (projectLoading) {
@@ -109,8 +183,9 @@ const ProjectDetailsPage = () => {
     );
   }
 
-  const isOwner = userData?.uid === projectData.owner_id;
-  const hasApplied = userApplications?.some(app => app.project_id === projectId);
+  const currentUid = userData?.uid || authUser?.uid || auth.currentUser?.uid;
+  const isOwner = currentUid === projectData.owner_id;
+  const hasApplied = hasAppliedDirect || userApplications?.some(app => app.project_id === projectId);
   const acceptedApplication = projectApplications?.find(
     app => app.user_id === userData?.uid && app.status === 'accepted'
   );
@@ -516,33 +591,44 @@ const ProjectDetailsPage = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
           >
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Apply to Join</h2>
-            <p className="text-gray-600 mb-4">
-              Tell the project owner why you'd be a great fit for this team.
-            </p>
-            
-            <textarea
-              value={applicationMessage}
-              onChange={(e) => setApplicationMessage(e.target.value)}
-              placeholder="Introduce yourself and explain your interest in this project..."
-              className="w-full h-40 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
-            />
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowApplyModal(false)}
-                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApply}
-                disabled={applyMutation.isLoading || !applicationMessage.trim()}
-                className="flex-1 px-6 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {applyMutation.isLoading ? 'Submitting...' : 'Submit Application'}
-              </button>
-            </div>
+            {applySuccess ? (
+              <div className="text-center py-6">
+                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Applied!</h2>
+                <p className="text-gray-600">Your application was submitted successfully.</p>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Apply to Join</h2>
+                <p className="text-gray-600 mb-4">
+                  Tell the project owner why you'd be a great fit for this team.
+                </p>
+                <textarea
+                  value={applicationMessage}
+                  onChange={(e) => setApplicationMessage(e.target.value)}
+                  placeholder="Introduce yourself and explain your interest in this project..."
+                  className="w-full h-40 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+                />
+                {applyError && (
+                  <p className="mt-2 text-sm text-red-600">{applyError}</p>
+                )}
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowApplyModal(false)}
+                    className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApply}
+                    disabled={applyLoading || !applicationMessage.trim()}
+                    className="flex-1 px-6 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {applyLoading ? 'Submitting...' : 'Submit Application'}
+                  </button>
+                </div>
+              </>
+            )}
           </motion.div>
         </div>
       )}
