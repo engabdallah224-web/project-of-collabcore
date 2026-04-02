@@ -69,10 +69,11 @@ const LoginFormSimple = () => {
       navigate('/discovery');
     } catch (error) {
       console.error('Login error:', error);
-      setApiError(
-        error.response?.data?.detail || 
-        'Invalid email or password. Please try again.'
-      );
+      const message =
+        error?.response?.data?.detail ||
+        error?.message ||
+        'Invalid email or password. Please try again.';
+      setApiError(message);
     } finally {
       setLoading(false);
     }
