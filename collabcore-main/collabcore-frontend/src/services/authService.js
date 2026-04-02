@@ -6,11 +6,29 @@ import {
   GoogleAuthProvider,
   GithubAuthProvider,
   signInWithPopup,
+  sendEmailVerification,
+  reload,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import api, { authAPI } from './api';
 import { ACCESS_TOKEN_KEY } from '../utils/constants';
 import { syncFirebaseProfileToFirestore } from './firestoreService';
+
+const mapSocialAuthError = (error, providerName) => {
+  if (error?.code === 'auth/operation-not-allowed') {
+    return new Error(
+      `${providerName} sign-in is disabled in Firebase. Enable it in Firebase Console > Authentication > Sign-in method, then save.`
+    );
+  }
+
+  if (error?.code === 'auth/unauthorized-domain') {
+    return new Error(
+      'This domain is not authorized for Firebase Auth. Add your Vercel domain in Firebase Console > Authentication > Settings > Authorized domains.'
+    );
+  }
+
+  return error;
+};
 
 // ============ REGISTER ============
 
@@ -30,6 +48,9 @@ export const register = async (userData) => {
 
     const user = userCredential.user;
 
+    // Require real/accessible email by sending verification mail.
+    await sendEmailVerification(user);
+
     // Get ID token
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
@@ -47,10 +68,15 @@ export const register = async (userData) => {
 
     // Get user profile from backend
     const response = await authAPI.getMe();
+
+    // Force verification-first flow for email/password accounts.
+    await signOut(auth);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
     
     return {
       user: response.data.user,
       idToken,
+      requiresEmailVerification: true,
     };
   } catch (error) {
     console.error('Registration error:', error);
@@ -99,6 +125,16 @@ export const login = async (email, password) => {
     // Sign in with Firebase
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+
+    // Enforce verified email for email/password accounts.
+    await reload(user);
+    if (!user.emailVerified) {
+      await sendEmailVerification(user);
+      await signOut(auth);
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      throw new Error('Please verify your email first. We sent a new verification link to your inbox.');
+    }
+
     await syncFirebaseProfileToFirestore(user);
 
     // Get ID token
@@ -163,7 +199,7 @@ export const loginWithGoogle = async () => {
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
 
-    // Try to get user profile, if not found, redirect to complete registration
+    // Try to get user profile; if backend is not available, keep using Firebase profile.
     try {
       const response = await authAPI.getMe();
       return {
@@ -171,11 +207,15 @@ export const loginWithGoogle = async () => {
         idToken,
       };
     } catch (error) {
-      if (error.response?.status === 404) {
-        // User doesn't exist in backend, need to complete registration
+      if (error.response?.status === 404 || !error.response) {
         return {
-          needsRegistration: true,
-          email: user.email,
+          user: {
+            uid: user.uid,
+            email: user.email,
+            full_name: user.displayName || '',
+            avatar_url: user.photoURL || null,
+            role: 'student',
+          },
           idToken,
         };
       }
@@ -183,7 +223,7 @@ export const loginWithGoogle = async () => {
     }
   } catch (error) {
     console.error('Google login error:', error);
-    throw error;
+    throw mapSocialAuthError(error, 'Google');
   }
 };
 
@@ -193,6 +233,7 @@ export const loginWithGoogle = async () => {
 export const loginWithGithub = async () => {
   try {
     const provider = new GithubAuthProvider();
+    provider.addScope('user:email');
     const userCredential = await signInWithPopup(auth, provider);
     const user = userCredential.user;
     await syncFirebaseProfileToFirestore(user);
@@ -200,7 +241,7 @@ export const loginWithGithub = async () => {
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
 
-    // Try to get user profile, if not found, redirect to complete registration
+    // Try to get user profile; if backend is not available, keep using Firebase profile.
     try {
       const response = await authAPI.getMe();
       return {
@@ -208,11 +249,15 @@ export const loginWithGithub = async () => {
         idToken,
       };
     } catch (error) {
-      if (error.response?.status === 404) {
-        // User doesn't exist in backend, need to complete registration
+      if (error.response?.status === 404 || !error.response) {
         return {
-          needsRegistration: true,
-          email: user.email,
+          user: {
+            uid: user.uid,
+            email: user.email,
+            full_name: user.displayName || '',
+            avatar_url: user.photoURL || null,
+            role: 'student',
+          },
           idToken,
         };
       }
@@ -220,7 +265,7 @@ export const loginWithGithub = async () => {
     }
   } catch (error) {
     console.error('GitHub login error:', error);
-    throw error;
+    throw mapSocialAuthError(error, 'GitHub');
   }
 };
 
@@ -294,6 +339,14 @@ export const subscribeToAuthChanges = (callback) => {
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
       try {
+        const isPasswordProvider = user.providerData?.some((p) => p.providerId === 'password');
+        if (isPasswordProvider && !user.emailVerified) {
+          await signOut(auth);
+          localStorage.removeItem(ACCESS_TOKEN_KEY);
+          callback({ user: null, idToken: null });
+          return;
+        }
+
         await syncFirebaseProfileToFirestore(user);
         // Get fresh ID token
         const idToken = await user.getIdToken();

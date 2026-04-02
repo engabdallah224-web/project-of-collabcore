@@ -135,7 +135,7 @@ const RegisterFormSimple = () => {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
           >
-            Redirecting you to login...
+            Verification email has been sent. Verify your email, then log in.
           </motion.p>
         </div>
       </motion.div>

@@ -287,7 +287,7 @@ const ProjectWorkspace = () => {
   }
 
   return (
-    <div className="h-[90vh] flex flex-col bg-[#f3f3f3]">
+    <div className="h-[100dvh] md:h-[90vh] flex flex-col bg-[#f3f3f3]">
       {/* Header */}
       <motion.div 
         initial={{ y: -20, opacity: 0 }}
@@ -356,7 +356,7 @@ const ProjectWorkspace = () => {
       </motion.div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
         {/* Mobile overlay backdrop */}
         {showMobileSidebar && (
           <div
@@ -371,7 +371,7 @@ const ProjectWorkspace = () => {
           transition={{ delay: 0.1 }}
           className={`${
             showMobileSidebar ? 'flex' : 'hidden'
-          } md:flex w-80 bg-white border-r border-gray-200 flex-col shadow-sm
+          } md:flex w-[86vw] max-w-80 bg-white border-r border-gray-200 flex-col shadow-sm
           fixed md:relative inset-y-0 left-0 z-30 md:z-auto`}
         >
           {/* Close button on mobile */}
@@ -449,7 +449,10 @@ const ProjectWorkspace = () => {
                 ].map((action) => (
                   <motion.button
                     key={action.id}
-                    onClick={() => setActiveDrawer(activeDrawer === action.id ? null : action.id)}
+                    onClick={() => {
+                      setActiveDrawer(activeDrawer === action.id ? null : action.id);
+                      setShowMobileSidebar(false);
+                    }}
                     className={`w-full flex items-center justify-between p-3 rounded-lg text-sm font-medium transition-all ${
                       activeDrawer === action.id
                         ? 'bg-red-600 text-white shadow-md'
@@ -479,11 +482,11 @@ const ProjectWorkspace = () => {
         </motion.div>
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col bg-white">
+        <div className="flex-1 min-w-0 flex flex-col bg-white">
           {/* Chat Messages */}
           <div 
             ref={chatContainerRef}
-            className="flex-1 overflow-y-auto p-6 bg-[#f3f3f3]"
+            className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#f3f3f3]"
           >
             {messagesLoading ? (
               <div className="flex items-center justify-center h-full">
@@ -505,7 +508,7 @@ const ProjectWorkspace = () => {
                       transition={{ delay: index * 0.02 }}
                       className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className={`flex items-end space-x-2 max-w-xl ${isOwn ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                      <div className={`flex items-end space-x-2 max-w-[88%] md:max-w-xl ${isOwn ? 'flex-row-reverse space-x-reverse' : ''}`}>
                         {/* Avatar */}
                         {!isOwn && (
                           <div className="h-8 w-8 rounded-full bg-gray-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
@@ -610,7 +613,7 @@ const ProjectWorkspace = () => {
           </div>
 
           {/* Message Input */}
-          <div className="p-4 bg-white border-t border-gray-200 relative">
+          <div className="sticky bottom-0 z-10 p-3 md:p-4 bg-white border-t border-gray-200 relative pb-[max(12px,env(safe-area-inset-bottom))]">
             <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
               <div className="flex-1 relative">
                 <textarea
@@ -624,7 +627,7 @@ const ProjectWorkspace = () => {
                   }}
                   placeholder="Type your message..."
                   rows={1}
-                  className="w-full px-4 py-3 pr-20 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-gray-900 placeholder-gray-500 resize-none"
+                  className="w-full px-4 py-3 pr-20 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-gray-900 placeholder-gray-500 resize-none text-base"
                   style={{ minHeight: '48px', maxHeight: '120px' }}
                 />
                 
@@ -964,13 +967,18 @@ const ProjectWorkspace = () => {
         {/* Drawer */}
         <AnimatePresence>
           {activeDrawer && (
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="w-[500px] bg-white border-l border-gray-200 flex flex-col shadow-lg"
-            >
+            <>
+              <div
+                className="md:hidden fixed inset-0 bg-black bg-opacity-40 z-30"
+                onClick={() => setActiveDrawer(null)}
+              />
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                className="fixed md:relative inset-y-0 right-0 z-40 md:z-auto w-full sm:w-[420px] md:w-[500px] bg-white border-l border-gray-200 flex flex-col shadow-lg"
+              >
               {/* Drawer Header */}
               <div className="p-6 bg-gray-50 border-b border-gray-200">
                 <div className="flex items-center justify-between">
@@ -1162,7 +1170,8 @@ const ProjectWorkspace = () => {
                   </div>
                 )}
               </div>
-            </motion.div>
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>

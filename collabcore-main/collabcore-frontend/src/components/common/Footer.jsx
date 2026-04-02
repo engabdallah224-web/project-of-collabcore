@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Users, Github, Twitter, Linkedin } from 'lucide-react';
+import { Users, Github, Facebook, Globe } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -73,25 +73,31 @@ const Footer = () => {
             <h3 className="text-white font-semibold mb-4">Connect</h3>
             <div className="flex space-x-4">
               <a
-                href="#"
+                href="https://github.com/engabdallah224-web"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-400 hover:text-red-500 transition-colors"
                 aria-label="GitHub"
               >
                 <Github className="h-5 w-5" />
               </a>
               <a
-                href="#"
+                href="https://www.facebook.com/share/18c7Wffd3y/?mibextid=wwXIfr"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-400 hover:text-red-500 transition-colors"
-                aria-label="Twitter"
+                aria-label="Facebook"
               >
-                <Twitter className="h-5 w-5" />
+                <Facebook className="h-5 w-5" />
               </a>
               <a
-                href="#"
+                href="https://engabdallahassan.com/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-400 hover:text-red-500 transition-colors"
-                aria-label="LinkedIn"
+                aria-label="Website"
               >
-                <Linkedin className="h-5 w-5" />
+                <Globe className="h-5 w-5" />
               </a>
             </div>
           </div>
