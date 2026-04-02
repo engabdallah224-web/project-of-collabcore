@@ -439,6 +439,25 @@ export const markAllNotificationsAsRead = async (uid) => {
  * Keep Firestore user profile in sync with Firebase Auth fields.
  * Useful for auto-filling avatar_url from Gmail/Google profile photo.
  */
+export const createUserProfileInFirestore = async (uid, profileData) => {
+  await setDoc(
+    doc(db, USERS_COLLECTION, uid),
+    {
+      uid,
+      email: profileData.email || '',
+      full_name: profileData.full_name || '',
+      university: profileData.university || '',
+      bio: profileData.bio || '',
+      skills: profileData.skills || [],
+      role: profileData.role || 'student',
+      avatar_url: profileData.avatar_url || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+};
+
 export const syncFirebaseProfileToFirestore = async (firebaseUser) => {
   if (!firebaseUser?.uid) return;
 

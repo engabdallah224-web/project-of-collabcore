@@ -7,12 +7,13 @@ import {
   GithubAuthProvider,
   signInWithPopup,
   sendEmailVerification,
+  sendPasswordResetEmail,
   reload,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import api, { authAPI } from './api';
 import { ACCESS_TOKEN_KEY } from '../utils/constants';
-import { syncFirebaseProfileToFirestore } from './firestoreService';
+import { syncFirebaseProfileToFirestore, createUserProfileInFirestore } from './firestoreService';
 
 const mapSocialAuthError = (error, providerName) => {
   if (error?.code === 'auth/operation-not-allowed') {
@@ -55,26 +56,52 @@ export const register = async (userData) => {
     const idToken = await user.getIdToken();
     localStorage.setItem(ACCESS_TOKEN_KEY, idToken);
 
-    // Create user profile in backend
-    await api.post('/api/auth/signup', {
-      email: userData.email,
-      password: userData.password,
-      full_name: userData.full_name,
-      university: userData.university,
-      bio: userData.bio || '',
-      skills: userData.skills || [],
-      role: userData.role || 'student',
-    });
-
-    // Get user profile from backend
-    const response = await authAPI.getMe();
+    // Try backend first; fall back to Firestore if backend is not deployed
+    let userProfile = null;
+    try {
+      await api.post('/api/auth/signup', {
+        email: userData.email,
+        password: userData.password,
+        full_name: userData.full_name,
+        university: userData.university,
+        bio: userData.bio || '',
+        skills: userData.skills || [],
+        role: userData.role || 'student',
+      });
+      const response = await authAPI.getMe();
+      userProfile = response.data.user;
+    } catch (backendError) {
+      if (!backendError.response) {
+        // Backend is offline — save profile directly to Firestore
+        await createUserProfileInFirestore(user.uid, {
+          email: userData.email,
+          full_name: userData.full_name || '',
+          university: userData.university || '',
+          bio: userData.bio || '',
+          skills: userData.skills || [],
+          role: userData.role || 'student',
+          avatar_url: null,
+        });
+        userProfile = {
+          uid: user.uid,
+          email: userData.email,
+          full_name: userData.full_name || '',
+        };
+      } else {
+        // Backend is reachable but returned an error (e.g. 400 duplicate)
+        if (backendError.response?.data?.detail) {
+          throw new Error(backendError.response.data.detail);
+        }
+        throw backendError;
+      }
+    }
 
     // Force verification-first flow for email/password accounts.
     await signOut(auth);
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     
     return {
-      user: response.data.user,
+      user: userProfile,
       idToken,
       requiresEmailVerification: true,
     };
@@ -92,20 +119,6 @@ export const register = async (userData) => {
 
     if (error.code === 'auth/weak-password') {
       throw new Error('Weak password. Please choose a stronger password with at least 6 characters.');
-    }
-
-    // If backend user creation failed after auth succeeded, delete Firebase user to avoid inconsistency
-    if (auth.currentUser && !error.code) {
-      try {
-        await auth.currentUser.delete();
-      } catch (cleanupError) {
-        console.warn('Failed to cleanup user after failed signup:', cleanupError);
-      }
-    }
-
-    // If backend returned 400 with detail, preserve that message
-    if (error.response?.data?.detail) {
-      throw new Error(error.response.data.detail);
     }
 
     throw error;
@@ -409,5 +422,25 @@ export const refreshToken = async () => {
   } catch (error) {
     console.error('Token refresh error:', error);
     throw error;
+  }
+};
+
+// ============ FORGOT PASSWORD ============
+
+/**
+ * Send a password reset email to the given address
+ * @param {string} email
+ */
+export const resetPassword = async (email) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error) {
+    if (error.code === 'auth/user-not-found') {
+      throw new Error('No account found with that email address.');
+    }
+    if (error.code === 'auth/invalid-email') {
+      throw new Error('Please enter a valid email address.');
+    }
+    throw new Error(error.message || 'Failed to send reset email. Please try again.');
   }
 };
