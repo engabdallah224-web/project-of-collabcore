@@ -50,7 +50,11 @@ export const register = async (userData) => {
     const user = userCredential.user;
 
     // Require real/accessible email by sending verification mail.
-    await sendEmailVerification(user);
+    try {
+      await sendEmailVerification(user);
+    } catch (_e) {
+      // best-effort: proceed even if verification email fails to send
+    }
 
     // Get ID token
     const idToken = await user.getIdToken();
@@ -140,12 +144,16 @@ export const login = async (email, password) => {
     const user = userCredential.user;
 
     // Enforce verified email for email/password accounts.
-    await reload(user);
+    try {
+      await reload(user);
+    } catch (_networkErr) {
+      // If reload fails due to network, proceed with existing user data
+    }
     if (!user.emailVerified) {
-      await sendEmailVerification(user);
+      try { await sendEmailVerification(user); } catch (_e) { /* best-effort */ }
       await signOut(auth);
       localStorage.removeItem(ACCESS_TOKEN_KEY);
-      throw new Error('Please verify your email first. We sent a new verification link to your inbox.');
+      throw new Error('Please verify your email first. A verification link has been sent to your inbox.');
     }
 
     await syncFirebaseProfileToFirestore(user);
@@ -191,6 +199,8 @@ export const login = async (email, password) => {
       throw new Error('Too many failed login attempts. Please try again later.');
     } else if (error.code === 'auth/user-disabled') {
       throw new Error('This account has been disabled');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection and try again.');
     }
     
     throw error;
