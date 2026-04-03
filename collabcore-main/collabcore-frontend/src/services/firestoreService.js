@@ -545,7 +545,7 @@ export const checkExistingApplication = async (projectId, userId) => {
 };
 
 /**
- * Fetch all applications for a project (for the owner).
+ * Fetch all applications for a project (for the owner), enriched with user profiles.
  */
 export const fetchProjectApplications = async (projectId) => {
   const q = query(
@@ -553,7 +553,66 @@ export const fetchProjectApplications = async (projectId) => {
     where('project_id', '==', projectId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const apps = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  // Enrich with user profile data
+  const enriched = await Promise.all(
+    apps.map(async (app) => {
+      if (!app.user_id) return app;
+      try {
+        const userSnap = await getDoc(doc(db, USERS_COLLECTION, app.user_id));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        return {
+          ...app,
+          applied_at: app.created_at,
+          user: {
+            full_name: userData.full_name || app.applicant_name || 'Unknown',
+            university: userData.university || '',
+            skills: userData.skills || [],
+            bio: userData.bio || '',
+            uid: app.user_id,
+          },
+        };
+      } catch {
+        return { ...app, applied_at: app.created_at, user: { full_name: app.applicant_name || 'Unknown', skills: [] } };
+      }
+    })
+  );
+  return enriched;
+};
+
+/**
+ * Accept or reject an application. Sends a notification to the applicant.
+ */
+export const updateApplicationStatusInFirestore = async (applicationId, status, projectTitle) => {
+  const ref = doc(db, APPLICATIONS_COLLECTION, applicationId);
+  await updateDoc(ref, {
+    status,
+    updated_at: new Date().toISOString(),
+  });
+
+  // Read the application to get user_id and project_id
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const appData = snap.data();
+  const { user_id, project_id } = appData;
+
+  if (!user_id) return;
+
+  // Send notification to applicant
+  const isAccepted = status === 'accepted';
+  await addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
+    user_id,
+    type: isAccepted ? 'application_accepted' : 'application_rejected',
+    title: isAccepted ? 'Application Accepted! 🎉' : 'Application Update',
+    message: isAccepted
+      ? `Your application to "${projectTitle || 'a project'}" has been accepted! You are now a team member.`
+      : `Your application to "${projectTitle || 'a project'}" was not accepted this time.`,
+    project_id,
+    application_id: applicationId,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  });
 };
 
 // ─── Project status ───────────────────────────────────────────────────────────

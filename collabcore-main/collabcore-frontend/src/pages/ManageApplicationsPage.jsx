@@ -1,94 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, CheckCircle, XCircle, Eye, Mail, MapPin, Code, Star, Filter, Search, ArrowLeft, Users, Clock, Award, TrendingUp, AlertCircle } from 'lucide-react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectAPI, applicationAPI } from '../services/api';
+import { FileText, CheckCircle, XCircle, Eye, MapPin, Search, ArrowLeft, Users, Clock, AlertCircle } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { fetchProjectById, fetchProjectApplications, updateApplicationStatusInFirestore } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatStatus } from '../utils/helpers';
 
 const ManageApplicationsPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [filter, setFilter] = useState('all'); // 'all', 'pending', 'accepted', 'rejected'
+  const [filter, setFilter] = useState('all');
   const [selectedApp, setSelectedApp] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [projectData, setProjectData] = useState(null);
+  const [applicationsData, setApplicationsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
 
-  // Fetch project details
-  const { data: projectData, isLoading: projectLoading } = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: async () => {
-      const response = await projectAPI.getProject(projectId);
-      return response.data.project;
-    },
-    enabled: !!projectId
-  });
-
-  // Fetch applications
-  const { data: applicationsData, isLoading: applicationsLoading, error: applicationsError } = useQuery({
-    queryKey: ['project-applications', projectId],
-    queryFn: async () => {
+  useEffect(() => {
+    if (!projectId) return;
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
       try {
-        console.log('Fetching applications for project:', projectId);
-        const response = await projectAPI.getProjectApplications(projectId);
-        console.log('Applications response:', response.data);
-        return response.data.applications || [];
-      } catch (error) {
-        console.error('Error fetching applications:', error);
-        console.error('Error details:', error.response?.data);
-        throw error;
+        const [project, apps] = await Promise.all([
+          fetchProjectById(projectId),
+          fetchProjectApplications(projectId),
+        ]);
+        setProjectData(project);
+        setApplicationsData(apps);
+      } catch (e) {
+        setLoadError(e.message || 'Failed to load');
+      } finally {
+        setLoading(false);
       }
-    },
-    enabled: !!projectId,
-    retry: 1
-  });
+    };
+    load();
+  }, [projectId]);
 
-  // Update application status mutation
-  const updateApplicationMutation = useMutation({
-    mutationFn: async ({ applicationId, status }) => {
-      return await applicationAPI.updateApplication(applicationId, { status });
-    },
-    onSuccess: () => {
-      // Invalidate and refetch applications
-      queryClient.invalidateQueries(['project-applications', projectId]);
-      queryClient.invalidateQueries(['project', projectId]);
+  const handleUpdateStatus = async (appId, status) => {
+    setUpdatingId(appId);
+    try {
+      await updateApplicationStatusInFirestore(appId, status, projectData?.title);
+      setApplicationsData((prev) =>
+        prev.map((a) => (a.id === appId ? { ...a, status } : a))
+      );
       setSelectedApp(null);
-    },
-    onError: (error) => {
-      console.error('Failed to update application:', error);
+    } catch (e) {
+      console.error('Failed to update application:', e);
+    } finally {
+      setUpdatingId(null);
     }
-  });
+  };
 
-  const filteredApplications = (applicationsData || []).filter(app => {
+  const handleAccept = (appId) => handleUpdateStatus(appId, 'accepted');
+  const handleReject = (appId) => handleUpdateStatus(appId, 'rejected');
+
+  const filteredApplications = applicationsData.filter(app => {
     const matchesFilter = filter === 'all' || app.status === filter;
     const matchesSearch = app.user?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          app.user?.university?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         app.user?.skills?.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
+                         (app.user?.skills || []).some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesFilter && matchesSearch;
   });
-
-  // Debug logging
-  React.useEffect(() => {
-    console.log('ManageApplicationsPage state:', {
-      projectId,
-      hasProjectData: !!projectData,
-      applicationsCount: applicationsData?.length,
-      filteredCount: filteredApplications.length,
-      filter,
-      searchQuery,
-      isLoading: applicationsLoading,
-      hasError: !!applicationsError
-    });
-  }, [projectData, applicationsData, filteredApplications, filter, searchQuery, applicationsLoading, applicationsError, projectId]);
-
-  const handleAccept = (appId) => {
-    updateApplicationMutation.mutate({ applicationId: appId, status: 'accepted' });
-  };
-
-  const handleReject = (appId) => {
-    updateApplicationMutation.mutate({ applicationId: appId, status: 'rejected' });
-  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -108,7 +83,7 @@ const ManageApplicationsPage = () => {
     }
   };
 
-  if (projectLoading || applicationsLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
         <LoadingSpinner />
@@ -116,28 +91,16 @@ const ManageApplicationsPage = () => {
     );
   }
 
-  if (applicationsError) {
+  if (loadError) {
     return (
       <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
         <div className="text-center bg-white rounded-2xl p-8 shadow-lg max-w-md">
           <AlertCircle className="h-16 w-16 mx-auto text-red-600 mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Applications</h2>
-          <p className="text-gray-600 mb-4">
-            {applicationsError.response?.data?.detail || 'Failed to load applications. Please try again.'}
-          </p>
+          <p className="text-gray-600 mb-4">{loadError}</p>
           <div className="flex gap-3 justify-center">
-            <button 
-              onClick={() => navigate('/projects')}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200"
-            >
-              ← Back to Projects
-            </button>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700"
-            >
-              Retry
-            </button>
+            <button onClick={() => navigate('/projects')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200">← Back to Projects</button>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">Retry</button>
           </div>
         </div>
       </div>
@@ -149,13 +112,7 @@ const ManageApplicationsPage = () => {
       <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Not Found</h2>
-          <p className="text-gray-600 mb-4">The project you're looking for doesn't exist.</p>
-          <button 
-            onClick={() => navigate('/projects')}
-            className="text-red-600 hover:text-red-700"
-          >
-            ← Back to Projects
-          </button>
+          <button onClick={() => navigate('/projects')} className="text-red-600 hover:text-red-700">← Back to Projects</button>
         </div>
       </div>
     );
@@ -331,7 +288,7 @@ const ManageApplicationsPage = () => {
                     <div className="flex gap-2">
                       <motion.button
                         onClick={() => handleAccept(app.id)}
-                        disabled={updateApplicationMutation.isPending}
+                        disabled={updatingId === app.id}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         whileHover={{ scale: 1.02, y: -1 }}
                         whileTap={{ scale: 0.98 }}
@@ -341,7 +298,7 @@ const ManageApplicationsPage = () => {
                       </motion.button>
                       <motion.button
                         onClick={() => handleReject(app.id)}
-                        disabled={updateApplicationMutation.isPending}
+                        disabled={updatingId === app.id}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         whileHover={{ scale: 1.02, y: -1 }}
                         whileTap={{ scale: 0.98 }}
