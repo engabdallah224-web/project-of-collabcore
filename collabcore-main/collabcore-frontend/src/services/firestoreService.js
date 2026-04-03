@@ -1005,4 +1005,86 @@ export const deleteTaskFromFirestore = async (taskId) => {
   await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
 };
 
+// ─── Repository Files ─────────────────────────────────────────────────────────
+
+import { storage } from '../config/firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+
+const REPO_FILES_COLLECTION = 'repo_files';
+
+/**
+ * Upload a file to Firebase Storage and save metadata to Firestore.
+ * onProgress(percent) is called during upload.
+ */
+export const uploadRepoFile = ({ projectId, file, onProgress }) => {
+  return new Promise(async (resolve, reject) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return reject(new Error('Not authenticated'));
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `repo_files/${projectId}/${Date.now()}_${safeName}`;
+    const sRef = storageRef(storage, path);
+
+    const uploadTask = uploadBytesResumable(sRef, file);
+
+    uploadTask.on(
+      'state_changed',
+      (snap) => {
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+        onProgress?.(pct);
+      },
+      reject,
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const uploader = await fetchUserProfile(uid);
+          const docRef = await addDoc(collection(db, REPO_FILES_COLLECTION), {
+            project_id: projectId,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            storage_path: path,
+            download_url: downloadURL,
+            uploaded_by: uid,
+            uploader_name: uploader?.full_name || 'Unknown',
+            created_at: new Date().toISOString(),
+          });
+          resolve({ id: docRef.id, download_url: downloadURL, name: file.name });
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+};
+
+export const subscribeToRepoFiles = (projectId, onFiles) => {
+  const q = query(
+    collection(db, REPO_FILES_COLLECTION),
+    where('project_id', '==', projectId),
+    orderBy('created_at', 'desc')
+  );
+  const unsub = onSnapshot(
+    q,
+    (snap) => onFiles(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    () => {
+      const q2 = query(collection(db, REPO_FILES_COLLECTION), where('project_id', '==', projectId));
+      onSnapshot(q2, (snap) => {
+        const files = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.created_at > b.created_at ? -1 : 1));
+        onFiles(files);
+      });
+    }
+  );
+  return unsub;
+};
+
+export const deleteRepoFile = async (fileId, storagePath) => {
+  await deleteDoc(doc(db, REPO_FILES_COLLECTION, fileId));
+  try {
+    await deleteObject(storageRef(storage, storagePath));
+  } catch { /* file may not exist in storage */ }
+};
+
 
