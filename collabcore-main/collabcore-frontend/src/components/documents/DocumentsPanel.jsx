@@ -1,486 +1,283 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { documentAPI } from '../../services/api';
-import { FileText, Plus, Trash2, Edit, Folder, FolderPlus, Save, X } from 'lucide-react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, Upload, Download, Trash2, User, Calendar, AlertCircle, X, Plus, File as FileIcon } from 'lucide-react';
+import { subscribeToDocumentFiles, uploadDocumentFile, deleteDocumentFile } from '../../services/firestoreService';
+import { auth } from '../../config/firebase';
 
 export default function DocumentsPanel({ projectId }) {
-  const [selectedDocument, setSelectedDocument] = useState(null);
-  const [showNewDocModal, setShowNewDocModal] = useState(false);
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [currentFolder, setCurrentFolder] = useState(null);
-  const queryClient = useQueryClient();
+  const [tab, setTab] = useState('files'); // 'files' | 'editor'
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
-  // Fetch documents
-  const { data: documentsData, isLoading: documentsLoading } = useQuery({
-    queryKey: ['documents', projectId, currentFolder],
-    queryFn: async () => {
-      const response = await documentAPI.getDocuments(projectId, currentFolder);
-      return response.data;
-    },
-  });
+  useEffect(() => {
+    if (!projectId) return;
+    setLoading(true);
+    const unsub = subscribeToDocumentFiles(projectId, (f) => {
+      setFiles(f);
+      setLoading(false);
+    });
+    return unsub;
+  }, [projectId]);
 
-  // Fetch folders
-  const { data: foldersData } = useQuery({
-    queryKey: ['folders', projectId],
-    queryFn: async () => {
-      const response = await documentAPI.getFolders(projectId);
-      return response.data;
-    },
-  });
+  const myUid = auth.currentUser?.uid;
 
-  const documents = documentsData?.documents || [];
-  const folders = foldersData?.folders || [];
+  const formatSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
-  if (selectedDocument) {
-    return (
-      <DocumentEditor
-        documentId={selectedDocument}
-        onClose={() => setSelectedDocument(null)}
-        projectId={projectId}
-      />
-    );
-  }
+  const formatDate = (ts) => {
+    if (!ts) return '';
+    return new Date(ts).toLocaleDateString();
+  };
+
+  const getFileIcon = (file) => {
+    const name = file.name?.toLowerCase() || '';
+    if (name.endsWith('.pdf')) return '📄';
+    if (name.endsWith('.docx') || name.endsWith('.doc')) return '📝';
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) return '📊';
+    if (name.endsWith('.pptx') || name.endsWith('.ppt')) return '📊';
+    return '📎';
+  };
+
+  const handleDelete = async (file) => {
+    if (!window.confirm(`Delete "${file.name}"?`)) return;
+    try {
+      await deleteDocumentFile(file.id, file.storage_path);
+    } catch (err) {
+      alert('Failed to delete: ' + err.message);
+    }
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Documents</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Collaborate on documents with your team
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
+          <p className="text-sm text-gray-500 mt-1">Upload Word, PDF and other files for everyone on the team</p>
         </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setShowNewFolderModal(true)}
-            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center space-x-2"
-          >
-            <FolderPlus className="h-4 w-4" />
-            <span>New Folder</span>
-          </button>
-          <button
-            onClick={() => setShowNewDocModal(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Document</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors text-sm font-medium"
+        >
+          <Plus className="h-4 w-4" />
+          Add File
+        </button>
       </div>
 
-      {/* Breadcrumb */}
-      {currentFolder && (
-        <div className="flex items-center space-x-2 text-sm">
+      {/* File list */}
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-500">Loading...</div>
+      ) : files.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
+          <FileText className="h-14 w-14 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-800 mb-1">No documents yet</h3>
+          <p className="text-sm text-gray-500 mb-4">Upload Word (.docx), PDF, or any file so teammates can download it</p>
           <button
-            onClick={() => setCurrentFolder(null)}
-            className="text-red-600 hover:text-red-700"
+            onClick={() => setShowUploadModal(true)}
+            className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 text-sm font-medium"
           >
-            All Documents
+            Upload First File
           </button>
-          <span className="text-gray-400">/</span>
-          <span className="text-gray-900 dark:text-white">
-            {folders.find(f => f.id === currentFolder)?.name}
-          </span>
         </div>
-      )}
-
-      {/* Folders */}
-      {!currentFolder && folders.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {folders.filter(f => !f.parent_id).map((folder) => (
-            <motion.button
-              key={folder.id}
-              onClick={() => setCurrentFolder(folder.id)}
-              className="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition-shadow text-left"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+      ) : (
+        <div className="space-y-3">
+          {files.map((file, i) => (
+            <motion.div
+              key={file.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 hover:shadow-sm transition-shadow"
             >
-              <div className="flex items-start space-x-3">
-                <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                  <Folder className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-white">
-                    {folder.name}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    {new Date(folder.created_at).toLocaleDateString()}
-                  </p>
+              <div className="h-11 w-11 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0 text-2xl">
+                {getFileIcon(file)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 truncate">{file.name}</p>
+                <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
+                  {file.size ? <span>{formatSize(file.size)}</span> : null}
+                  <span className="flex items-center gap-1"><User className="h-3 w-3" />{file.uploader_name}</span>
+                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{formatDate(file.created_at)}</span>
                 </div>
               </div>
-            </motion.button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a
+                  href={file.download_url}
+                  download={file.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-black transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </a>
+                {file.uploaded_by === myUid && (
+                  <button
+                    onClick={() => handleDelete(file)}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </motion.div>
           ))}
         </div>
       )}
 
-      {/* Documents */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
-        {documentsLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No Documents Yet
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Create your first document to get started
-            </p>
-            <button
-              onClick={() => setShowNewDocModal(true)}
-              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors inline-flex items-center space-x-2"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create Document</span>
-            </button>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {documents.map((doc) => (
-              <DocumentItem
-                key={doc.id}
-                document={doc}
-                onClick={() => setSelectedDocument(doc.id)}
-                onDelete={() => {
-                  queryClient.invalidateQueries(['documents', projectId]);
-                }}
-              />
-            ))}
-          </div>
+      {/* Upload Modal */}
+      <AnimatePresence>
+        {showUploadModal && (
+          <UploadModal
+            projectId={projectId}
+            onClose={() => setShowUploadModal(false)}
+          />
         )}
-      </div>
-
-      {/* Modals */}
-      {showNewDocModal && (
-        <NewDocumentModal
-          projectId={projectId}
-          folderId={currentFolder}
-          onClose={() => setShowNewDocModal(false)}
-          onSuccess={(docId) => {
-            setShowNewDocModal(false);
-            queryClient.invalidateQueries(['documents', projectId]);
-            setSelectedDocument(docId);
-          }}
-        />
-      )}
-
-      {showNewFolderModal && (
-        <NewFolderModal
-          projectId={projectId}
-          onClose={() => setShowNewFolderModal(false)}
-          onSuccess={() => {
-            setShowNewFolderModal(false);
-            queryClient.invalidateQueries(['folders', projectId]);
-          }}
-        />
-      )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// Document Item Component
-function DocumentItem({ document, onClick, onDelete }) {
-  const queryClient = useQueryClient();
+function UploadModal({ projectId, onClose }) {
+  const [dragOver, setDragOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
 
-  const deleteMutation = useMutation({
-    mutationFn: () => documentAPI.deleteDocument(document.id),
-    onSuccess: () => {
-      onDelete();
-    },
-  });
+  const ACCEPTED = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.zip';
+
+  const handleFile = (file) => {
+    if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setError('File too large. Maximum 100 MB.');
+      return;
+    }
+    setError('');
+    setSelectedFile(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFile(e.dataTransfer.files[0]);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile || uploading) return;
+    setUploading(true);
+    setError('');
+    try {
+      await uploadDocumentFile({ projectId, file: selectedFile, onProgress: setProgress });
+      onClose();
+    } catch (err) {
+      setError('Upload failed: ' + (err.message || 'Unknown error'));
+      setUploading(false);
+    }
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   return (
     <motion.div
-      className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer"
-      onClick={onClick}
-      whileHover={{ x: 4 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-start space-x-3 flex-1">
-          <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-            <FileText className="h-5 w-5 text-red-600 dark:text-red-400" />
+      <motion.div
+        initial={{ scale: 0.93, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.93, opacity: 0 }}
+        className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold text-gray-900">Upload Document</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700 rounded-lg">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {!selectedFile ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => inputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
+              dragOver ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-red-400 hover:bg-gray-50'
+            }`}
+          >
+            <Upload className="h-10 w-10 text-gray-400 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700">Drag & drop a file here</p>
+            <p className="text-xs text-gray-500 mt-1">or click to browse</p>
+            <p className="text-xs text-gray-400 mt-3">PDF · Word · Excel · PowerPoint · Images · max 100 MB</p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ACCEPTED}
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files[0])}
+            />
           </div>
-          <div className="flex-1">
-            <h3 className="font-medium text-gray-900 dark:text-white">
-              {document.title}
-            </h3>
-            <div className="flex items-center space-x-3 mt-1 text-xs text-gray-600 dark:text-gray-400">
-              <span>
-                By {document.creator?.full_name || 'Unknown'}
-              </span>
-              <span>•</span>
-              <span>
-                Modified {new Date(document.updated_at).toLocaleDateString()}
-              </span>
-              <span>•</span>
-              <span>v{document.version}</span>
+        ) : (
+          <div className="rounded-xl border border-gray-200 p-4 flex items-center gap-3 mb-4">
+            <FileText className="h-8 w-8 text-red-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">{selectedFile.name}</p>
+              <p className="text-xs text-gray-500">{formatSize(selectedFile.size)}</p>
+            </div>
+            {!uploading && (
+              <button onClick={() => setSelectedFile(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {uploading && (
+          <div className="mt-3 mb-1">
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Uploading…</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-red-600 transition-all duration-300" style={{ width: `${progress}%` }} />
             </div>
           </div>
+        )}
+
+        {error && (
+          <div className="flex items-center gap-2 mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} disabled={uploading} className="flex-1 py-2 border border-gray-300 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleUpload}
+            disabled={!selectedFile || uploading}
+            className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploading ? `Uploading ${progress}%` : 'Upload'}
+          </button>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (confirm('Are you sure you want to delete this document?')) {
-              deleteMutation.mutate();
-            }
-          }}
-          className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
-
-// Document Editor Component
-function DocumentEditor({ documentId, onClose, projectId }) {
-  const [content, setContent] = useState('');
-  const [title, setTitle] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
-  const queryClient = useQueryClient();
-
-  // Fetch document
-  const { data: docData, isLoading } = useQuery({
-    queryKey: ['document', documentId],
-    queryFn: async () => {
-      const response = await documentAPI.getDocument(documentId);
-      return response.data;
-    },
-  });
-
-  // Update state when document data loads
-  useEffect(() => {
-    if (docData?.document) {
-      setContent(docData.document.content || '');
-      setTitle(docData.document.title || '');
-      setHasChanges(false);
-    }
-  }, [docData]);
-
-  // Save mutation
-  const saveMutation = useMutation({
-    mutationFn: (data) => documentAPI.updateDocument(documentId, data),
-    onSuccess: () => {
-      setHasChanges(false);
-      queryClient.invalidateQueries(['document', documentId]);
-      queryClient.invalidateQueries(['documents', projectId]);
-    },
-  });
-
-  const handleSave = () => {
-    saveMutation.mutate({ title, content });
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-[calc(100vh-200px)] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-sm">
-      {/* Editor Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center space-x-3 flex-1">
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              setHasChanges(true);
-            }}
-            className="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-0 text-gray-900 dark:text-white flex-1"
-            placeholder="Untitled Document"
-          />
-        </div>
-        <div className="flex items-center space-x-3">
-          {hasChanges && (
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Unsaved changes
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges || saveMutation.isPending}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            <Save className="h-4 w-4" />
-            <span>{saveMutation.isPending ? 'Saving...' : 'Save'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Editor Content */}
-      <div className="flex-1 overflow-auto bg-white dark:bg-gray-800">
-        <textarea
-          value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            setHasChanges(true);
-          }}
-          className="w-full h-full p-6 bg-white dark:bg-gray-800 border-none focus:outline-none focus:ring-0 text-gray-900 dark:text-white resize-none text-sm leading-relaxed"
-          placeholder="Start writing..."
-          style={{ minHeight: '100%' }}
-        />
-      </div>
-
-      {/* Editor Footer */}
-      <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-        <span>Version {docData?.document?.version}</span>
-        <span>
-          Last edited by {docData?.document?.creator?.full_name} on{' '}
-          {new Date(docData?.document?.updated_at).toLocaleString()}
-        </span>
-        <span>{content.length} characters</span>
-      </div>
-    </div>
-  );
-}
-
-// New Document Modal
-function NewDocumentModal({ projectId, folderId, onClose, onSuccess }) {
-  const [title, setTitle] = useState('');
-
-  const createMutation = useMutation({
-    mutationFn: (data) => documentAPI.createDocument(projectId, data),
-    onSuccess: (response) => {
-      onSuccess(response.data.document.id);
-    },
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    createMutation.mutate({
-      title,
-      content: '',
-      folder_id: folderId,
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6"
-      >
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-          New Document
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Document Title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="My Document"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-600 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              required
-              autoFocus
-            />
-          </div>
-
-          <div className="flex space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
-  );
-}
-
-// New Folder Modal
-function NewFolderModal({ projectId, onClose, onSuccess }) {
-  const [name, setName] = useState('');
-
-  const createMutation = useMutation({
-    mutationFn: (data) => documentAPI.createFolder(projectId, data),
-    onSuccess: () => {
-      onSuccess();
-    },
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    createMutation.mutate({ name });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6"
-      >
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-          New Folder
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Folder Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Folder"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-600 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              required
-              autoFocus
-            />
-          </div>
-
-          <div className="flex space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
-  );
-}
-
