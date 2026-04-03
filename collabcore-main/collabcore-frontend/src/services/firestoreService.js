@@ -615,7 +615,10 @@ export const removeMemberFromProject = async (projectId, userId, projectTitle) =
 };
 
 /**
- * Accept or reject an application. Sends a notification to the applicant.
+ * Accept or reject an application.
+ * - Notifies the applicant of the decision.
+ * - If accepted: notifies all existing team members that a new member joined.
+ * - If rejected: notifies all existing team members that the application was declined.
  */
 export const updateApplicationStatusInFirestore = async (applicationId, status, projectTitle) => {
   const ref = doc(db, APPLICATIONS_COLLECTION, applicationId);
@@ -632,8 +635,10 @@ export const updateApplicationStatusInFirestore = async (applicationId, status, 
 
   if (!user_id) return;
 
-  // Send notification to applicant
   const isAccepted = status === 'accepted';
+  const now = new Date().toISOString();
+
+  // 1. Notify the applicant
   await addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
     user_id,
     type: isAccepted ? 'application_accepted' : 'application_rejected',
@@ -644,8 +649,59 @@ export const updateApplicationStatusInFirestore = async (applicationId, status, 
     project_id,
     application_id: applicationId,
     is_read: false,
-    created_at: new Date().toISOString(),
+    created_at: now,
   });
+
+  // 2. Get applicant's name for team notifications
+  let applicantName = 'Someone';
+  try {
+    const userSnap = await getDoc(doc(db, USERS_COLLECTION, user_id));
+    if (userSnap.exists()) applicantName = userSnap.data().full_name || applicantName;
+  } catch { /* ignore */ }
+
+  // 3. Collect existing team member IDs (accepted members + owner), excluding the applicant
+  const teamMemberIds = new Set();
+
+  // Get project owner
+  try {
+    const projectSnap = await getDoc(doc(db, PROJECTS_COLLECTION, project_id));
+    if (projectSnap.exists()) {
+      const ownerId = projectSnap.data().owner_id;
+      if (ownerId && ownerId !== user_id) teamMemberIds.add(ownerId);
+    }
+  } catch { /* ignore */ }
+
+  // Get accepted applications
+  try {
+    const acceptedQ = query(
+      collection(db, APPLICATIONS_COLLECTION),
+      where('project_id', '==', project_id),
+      where('status', '==', 'accepted')
+    );
+    const acceptedSnap = await getDocs(acceptedQ);
+    acceptedSnap.docs.forEach((d) => {
+      const uid = d.data().user_id;
+      if (uid && uid !== user_id) teamMemberIds.add(uid);
+    });
+  } catch { /* ignore */ }
+
+  if (teamMemberIds.size === 0) return;
+
+  // 4. Send notification to each existing team member
+  const teamNotifications = [...teamMemberIds].map((memberId) =>
+    addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
+      user_id: memberId,
+      type: isAccepted ? 'new_team_member' : 'application_reviewed',
+      title: isAccepted ? 'New Team Member 🎉' : 'Application Reviewed',
+      message: isAccepted
+        ? `${applicantName} has joined "${projectTitle || 'your project'}" as a new team member.`
+        : `${applicantName}'s application to "${projectTitle || 'your project'}" was not accepted.`,
+      project_id,
+      is_read: false,
+      created_at: now,
+    })
+  );
+  await Promise.all(teamNotifications);
 };
 
 // ─── Project status ───────────────────────────────────────────────────────────
