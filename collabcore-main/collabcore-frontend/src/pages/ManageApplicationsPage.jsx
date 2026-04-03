@@ -243,22 +243,7 @@ const ManageApplicationsPage = () => {
                     </span>
                   </div>
 
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="text-center p-3 bg-gray-50 rounded-xl">
-                      <div className="flex items-center justify-center gap-1 mb-1">
-                        <Star className="h-4 w-4 text-yellow-500 fill-current" />
-                        <span className="font-semibold text-gray-900">{app.user?.rating || 'N/A'}</span>
-                      </div>
-                      <div className="text-xs text-gray-600">Rating</div>
-                    </div>
-                    <div className="text-center p-3 bg-gray-50 rounded-xl">
-                      <div className="font-semibold text-gray-900 mb-1">{app.user?.projects_completed || 'N/A'}</div>
-                      <div className="text-xs text-gray-600">Projects</div>
-                    </div>
-                  </div>
-
-                  {/* Skills */}
+                  {/* Skills */}}
                   <div className="mb-4">
                     <div className="flex flex-wrap gap-2">
                       {(app.user?.skills || []).slice(0, 3).map((skill, index) => (
@@ -403,17 +388,10 @@ const ManageApplicationsPage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-4 bg-gray-50 rounded-xl">
-                      <div className="flex items-center justify-center gap-1 mb-2">
-                        <Star className="h-5 w-5 text-yellow-500 fill-current" />
-                        <span className="text-2xl font-bold text-gray-900">{selectedApp.user?.rating || 'N/A'}</span>
-                      </div>
-                      <div className="text-sm text-gray-600">Rating</div>
-                    </div>
-                    <div className="text-center p-4 bg-gray-50 rounded-xl">
-                      <div className="text-2xl font-bold text-gray-900 mb-2">{selectedApp.user?.projects_completed || 'N/A'}</div>
-                      <div className="text-sm text-gray-600">Projects Completed</div>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <div className="text-sm text-gray-600 mb-1">University</div>
+                      <div className="font-semibold text-gray-900">{selectedApp.user?.university || 'Not specified'}</div>
                     </div>
                   </div>
                 </div>
