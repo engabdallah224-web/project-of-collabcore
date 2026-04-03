@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, User, Building2, Eye, EyeOff, AlertCircle, CheckCircle, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
 import { register } from '../../services/authService';
 import { USER_ROLES } from '../../utils/constants';
-import { staticAPI } from '../../services/api';
+import { WORLD_UNIVERSITIES } from '../../data/universities';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 const RegisterFormSimple = () => {
@@ -24,28 +24,7 @@ const RegisterFormSimple = () => {
   const [apiError, setApiError] = useState('');
   const [success, setSuccess] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
-  const [universities, setUniversities] = useState([]);
-
-  // Fetch universities on component mount
-  useEffect(() => {
-    const fetchUniversities = async () => {
-      try {
-        const response = await staticAPI.getUniversities();
-        setUniversities(response.data.universities || []);
-      } catch (error) {
-        console.error('Error fetching universities:', error);
-        // Fallback to some default universities if API fails
-        setUniversities([
-          'Stanford University',
-          'MIT',
-          'Harvard University',
-          'UC Berkeley',
-          'Other'
-        ]);
-      }
-    };
-    fetchUniversities();
-  }, []);
+  const universities = WORLD_UNIVERSITIES;
 
   const handleChange = (e) => {
     const { name, value } = e.target;

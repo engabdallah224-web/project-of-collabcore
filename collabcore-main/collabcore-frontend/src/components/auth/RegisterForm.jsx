@@ -5,6 +5,7 @@ import { Mail, Lock, User, Building2, Eye, EyeOff, AlertCircle, CheckCircle } fr
 import { register } from '../../services/authService';
 import { validateEmail, validatePassword, validateConfirmPassword, validateRequired } from '../../utils/validators';
 import { USER_ROLES } from '../../utils/constants';
+import { WORLD_UNIVERSITIES } from '../../data/universities';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 const RegisterForm = () => {
@@ -219,13 +220,20 @@ const RegisterForm = () => {
                 type="text"
                 id="university"
                 name="university"
+                list="university-list"
                 value={formData.university}
                 onChange={handleChange}
                 className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition ${
                   errors.university ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Stanford University"
+                placeholder="Search your university..."
+                autoComplete="off"
               />
+              <datalist id="university-list">
+                {WORLD_UNIVERSITIES.map((uni) => (
+                  <option key={uni} value={uni} />
+                ))}
+              </datalist>
             </div>
             {errors.university && (
               <p className="mt-1 text-sm text-red-600">{errors.university}</p>
