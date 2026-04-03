@@ -71,6 +71,7 @@ export const sendDirectMessage = async ({ toUserId, content }) => {
     title: `💬 New message from ${senderName}`,
     message: content.length > 80 ? content.slice(0, 80) + '…' : content,
     sender_id: uid,
+    link: `/messages?with=${uid}`,
     is_read: false,
     created_at: now,
   });
@@ -103,6 +104,48 @@ export const subscribeToDirectMessages = (myUid, theirUid, onMessages) => {
     }
   );
   return unsub;
+};
+
+/**
+ * Subscribe to all DM conversations for the current user.
+ * Returns an array of { dmId, otherUserId, otherUser, lastMessage, lastAt }.
+ */
+export const subscribeToMyDMConversations = (myUid, onConversations) => {
+  const q1 = query(collection(db, DM_COLLECTION), where('sender_id', '==', myUid));
+  const q2 = query(collection(db, DM_COLLECTION), where('to_user_id', '==', myUid));
+
+  let msgs1 = [];
+  let msgs2 = [];
+
+  const merge = () => {
+    const all = [...msgs1, ...msgs2];
+    const byDmId = {};
+    all.forEach((m) => {
+      if (!byDmId[m.dm_id] || m.created_at > byDmId[m.dm_id].created_at) {
+        byDmId[m.dm_id] = m;
+      }
+    });
+    const convs = Object.values(byDmId).map((m) => ({
+      dmId: m.dm_id,
+      otherUserId: m.sender_id === myUid ? m.to_user_id : m.sender_id,
+      otherUser: m.sender_id === myUid ? null : (m.sender || null),
+      lastMessage: m.content,
+      lastAt: m.created_at,
+    }));
+    convs.sort((a, b) => (a.lastAt > b.lastAt ? -1 : 1));
+    onConversations(convs);
+  };
+
+  const unsub1 = onSnapshot(q1, (snap) => {
+    msgs1 = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    merge();
+  });
+  const unsub2 = onSnapshot(q2, (snap) => {
+    msgs2 = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    merge();
+  });
+
+  return () => { unsub1(); unsub2(); };
 };
 
 // ─── Projects ────────────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import MeetingAnalyticsPage from './pages/MeetingAnalyticsPage';
 import ProjectSettingsPage from './pages/ProjectSettingsPage';
 import ProjectDetailsPage from './pages/ProjectDetailsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import MessagesPage from './pages/MessagesPage';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -75,6 +76,7 @@ function AppContent() {
             <Route path="/projects/:projectId/settings" element={<ProtectedRoute><ProjectSettingsPage /></ProtectedRoute>} />
             <Route path="/users/:userId" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+            <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
