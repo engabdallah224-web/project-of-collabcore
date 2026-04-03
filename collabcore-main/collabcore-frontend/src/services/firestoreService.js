@@ -582,6 +582,39 @@ export const fetchProjectApplications = async (projectId) => {
 };
 
 /**
+ * Remove a team member from a project (sets their application to 'removed').
+ * Sends a notification to the removed member.
+ */
+export const removeMemberFromProject = async (projectId, userId, projectTitle) => {
+  // Find the accepted application for this user in this project
+  const q = query(
+    collection(db, APPLICATIONS_COLLECTION),
+    where('project_id', '==', projectId),
+    where('user_id', '==', userId),
+    where('status', '==', 'accepted')
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return;
+
+  const appDoc = snap.docs[0];
+  await updateDoc(doc(db, APPLICATIONS_COLLECTION, appDoc.id), {
+    status: 'removed',
+    updated_at: new Date().toISOString(),
+  });
+
+  // Notify the removed member
+  await addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
+    user_id: userId,
+    type: 'removed_from_project',
+    title: 'Removed from Project',
+    message: `You have been removed from the project "${projectTitle || 'a project'}".`,
+    project_id: projectId,
+    is_read: false,
+    created_at: new Date().toISOString(),
+  });
+};
+
+/**
  * Accept or reject an application. Sends a notification to the applicant.
  */
 export const updateApplicationStatusInFirestore = async (applicationId, status, projectTitle) => {

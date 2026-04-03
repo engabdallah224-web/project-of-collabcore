@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video, Phone, ArrowLeft, CheckSquare, TrendingUp, X, GitBranch, FileText, Sparkles, Crown, Clock, Image as ImageIcon, File, Download, Plus } from 'lucide-react';
+import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video, Phone, ArrowLeft, CheckSquare, TrendingUp, X, GitBranch, FileText, Sparkles, Crown, Clock, Image as ImageIcon, File, Download, Plus, UserMinus } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectAPI, authAPI, messageAPI, uploadAPI } from '../services/api';
@@ -10,6 +10,7 @@ import {
   fetchUserProfile,
   sendProjectMessageDirect,
   subscribeToProjectMessages,
+  removeMemberFromProject,
 } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
@@ -35,6 +36,7 @@ const ProjectWorkspace = () => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [realtimeMessages, setRealtimeMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef(null);
@@ -181,6 +183,19 @@ const ProjectWorkspace = () => {
     if (!userId) return;
     setShowMobileSidebar(false);
     navigate(`/users/${userId}`);
+  };
+
+  const handleRemoveMember = async (member) => {
+    if (!window.confirm(`Remove ${member.name} from the project?`)) return;
+    setRemovingMemberId(member.id);
+    try {
+      await removeMemberFromProject(projectId, member.id, projectData?.title);
+      queryClient.invalidateQueries(['project-applications', projectId]);
+    } catch (e) {
+      console.error('Failed to remove member:', e);
+    } finally {
+      setRemovingMemberId(null);
+    }
   };
 
   // Auto-scroll to bottom when new messages arrive
@@ -417,34 +432,49 @@ const ProjectWorkspace = () => {
                     transition={{ delay: index * 0.05 }}
                     className="group"
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleViewUserProfile(member.id)}
-                      className="w-full text-left flex items-center space-x-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
-                    >
-                      {/* Avatar */}
-                      <div className="relative flex-shrink-0">
-                        <div className={`h-12 w-12 rounded-full flex items-center justify-center text-lg font-bold text-white ${
-                          member.isOwner ? 'bg-red-600' : 'bg-gray-600'
-                        }`}>
-                          {member.avatar}
-                        </div>
-                        {member.isOwner && (
-                          <div className="absolute -top-1 -right-1 bg-yellow-400 rounded-full p-1">
-                            <Crown className="h-3 w-3 text-yellow-900" />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleViewUserProfile(member.id)}
+                        className="flex-1 text-left flex items-center space-x-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all"
+                      >
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0">
+                          <div className={`h-12 w-12 rounded-full flex items-center justify-center text-lg font-bold text-white ${
+                            member.isOwner ? 'bg-red-600' : 'bg-gray-600'
+                          }`}>
+                            {member.avatar}
                           </div>
-                        )}
-                        <div className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white ${
-                          member.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                        }`} />
-                      </div>
+                          {member.isOwner && (
+                            <div className="absolute -top-1 -right-1 bg-yellow-400 rounded-full p-1">
+                              <Crown className="h-3 w-3 text-yellow-900" />
+                            </div>
+                          )}
+                          <div className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white ${
+                            member.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                          }`} />
+                        </div>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{member.name}</p>
-                        <p className="text-xs text-gray-500">{member.role}</p>
-                      </div>
-                    </button>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{member.name}</p>
+                          <p className="text-xs text-gray-500">{member.role}</p>
+                        </div>
+                      </button>
+
+                      {/* Remove button — only for owner viewing non-owner members */}
+                      {!member.isOwner && projectData?.owner_id === (userData?.uid || userData?.id) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(member)}
+                          disabled={removingMemberId === member.id}
+                          title="Remove member"
+                          className="flex-shrink-0 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </motion.div>
                 ))}
               </div>
