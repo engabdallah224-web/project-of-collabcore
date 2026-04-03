@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, CheckCircle, XCircle, Eye, MapPin, Search, ArrowLeft, Users, Clock, AlertCircle } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Eye, MapPin, Search, ArrowLeft, Users, Clock, AlertCircle, UserMinus } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { fetchProjectById, fetchProjectApplications, updateApplicationStatusInFirestore } from '../services/firestoreService';
+import { fetchProjectById, fetchProjectApplications, updateApplicationStatusInFirestore, removeMemberFromProject } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatStatus } from '../utils/helpers';
 
@@ -57,6 +57,21 @@ const ManageApplicationsPage = () => {
   const handleAccept = (appId) => handleUpdateStatus(appId, 'accepted');
   const handleReject = (appId) => handleUpdateStatus(appId, 'rejected');
 
+  const handleRemoveMember = async (app) => {
+    if (!window.confirm(`Remove ${app.user?.full_name || 'this member'} from the project?`)) return;
+    setUpdatingId(app.id);
+    try {
+      await removeMemberFromProject(projectId, app.user_id, projectData?.title);
+      setApplicationsData((prev) =>
+        prev.map((a) => (a.id === app.id ? { ...a, status: 'removed' } : a))
+      );
+    } catch (e) {
+      console.error('Failed to remove member:', e);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const filteredApplications = applicationsData.filter(app => {
     const matchesFilter = filter === 'all' || app.status === filter;
     const matchesSearch = app.user?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -70,6 +85,7 @@ const ManageApplicationsPage = () => {
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'accepted': return 'bg-green-100 text-green-800 border-green-200';
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
+      case 'removed': return 'bg-gray-100 text-gray-500 border-gray-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -79,6 +95,7 @@ const ManageApplicationsPage = () => {
       case 'pending': return <Clock className="h-4 w-4" />;
       case 'accepted': return <CheckCircle className="h-4 w-4" />;
       case 'rejected': return <XCircle className="h-4 w-4" />;
+      case 'removed': return <UserMinus className="h-4 w-4" />;
       default: return <FileText className="h-4 w-4" />;
     }
   };
@@ -295,15 +312,29 @@ const ManageApplicationsPage = () => {
                   )}
 
                   {app.status !== 'pending' && (
-                    <motion.button
-                      onClick={() => setSelectedApp(app)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
-                      whileHover={{ scale: 1.02, y: -1 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      <Eye className="h-4 w-4" />
-                      View Details
-                    </motion.button>
+                    <div className="flex flex-col gap-2">
+                      <motion.button
+                        onClick={() => setSelectedApp(app)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                        whileHover={{ scale: 1.02, y: -1 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Eye className="h-4 w-4" />
+                        View Details
+                      </motion.button>
+                      {app.status === 'accepted' && (
+                        <motion.button
+                          onClick={() => handleRemoveMember(app)}
+                          disabled={updatingId === app.id}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl font-medium hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          whileHover={{ scale: 1.02, y: -1 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <UserMinus className="h-4 w-4" />
+                          Remove from Team
+                        </motion.button>
+                      )}
+                    </div>
                   )}
                 </motion.div>
               ))}
