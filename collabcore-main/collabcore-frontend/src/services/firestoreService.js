@@ -39,6 +39,7 @@ const getDmId = (uid1, uid2) => [uid1, uid2].sort().join('_');
 
 /**
  * Send a direct message between two users.
+ * Also sends a notification to the recipient.
  */
 export const sendDirectMessage = async ({ toUserId, content }) => {
   const uid = auth.currentUser?.uid;
@@ -46,18 +47,32 @@ export const sendDirectMessage = async ({ toUserId, content }) => {
 
   const sender = await fetchUserProfile(uid);
   const dmId = getDmId(uid, toUserId);
+  const now = new Date().toISOString();
+  const senderName = sender?.full_name || 'Someone';
 
+  // Save the message
   await addDoc(collection(db, DM_COLLECTION), {
     dm_id: dmId,
     sender_id: uid,
     to_user_id: toUserId,
     content,
     is_read: false,
-    created_at: new Date().toISOString(),
+    created_at: now,
     sender: {
       uid,
-      full_name: sender?.full_name || 'User',
+      full_name: senderName,
     },
+  });
+
+  // Notify recipient
+  await addDoc(collection(db, NOTIFICATIONS_COLLECTION), {
+    user_id: toUserId,
+    type: 'direct_message',
+    title: `💬 New message from ${senderName}`,
+    message: content.length > 80 ? content.slice(0, 80) + '…' : content,
+    sender_id: uid,
+    is_read: false,
+    created_at: now,
   });
 };
 
