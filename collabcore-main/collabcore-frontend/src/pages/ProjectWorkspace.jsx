@@ -14,6 +14,9 @@ import {
   sendDirectMessage,
   subscribeToDirectMessages,
   subscribeToProjectTasks,
+  subscribeToRepoFiles,
+  subscribeToDocumentFiles,
+  fetchProjectApplications,
 } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
@@ -41,6 +44,8 @@ const ProjectWorkspace = () => {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [removingMemberId, setRemovingMemberId] = useState(null);
   const [tasksData, setTasksData] = useState([]);
+  const [repoFilesCount, setRepoFilesCount] = useState(0);
+  const [docFilesCount, setDocFilesCount] = useState(0);
   // Direct Message state
   const [dmWith, setDmWith] = useState(null); // { id, name, avatar }
   const [dmMessages, setDmMessages] = useState([]);
@@ -112,6 +117,20 @@ const ProjectWorkspace = () => {
   useEffect(() => {
     if (!projectId) return;
     const unsub = subscribeToProjectTasks(projectId, setTasksData);
+    return unsub;
+  }, [projectId]);
+
+  // Subscribe repo files count for stats
+  useEffect(() => {
+    if (!projectId) return;
+    const unsub = subscribeToRepoFiles(projectId, (f) => setRepoFilesCount(f.length));
+    return unsub;
+  }, [projectId]);
+
+  // Subscribe doc files count for stats
+  useEffect(() => {
+    if (!projectId) return;
+    const unsub = subscribeToDocumentFiles(projectId, (f) => setDocFilesCount(f.length));
     return unsub;
   }, [projectId]);
 
@@ -1301,55 +1320,90 @@ const ProjectWorkspace = () => {
 
                 {activeDrawer === 'stats' && (
                   <div className="p-6 space-y-4">
-                    <motion.div 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
-                    >
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-lg font-semibold text-gray-700">Team Size</span>
-                        <span className="text-3xl font-bold text-red-600">
-                          {projectData.current_team_size || 1}/{projectData.team_size_limit || 5}
+                    {/* Task Progress */}
+                    {(() => {
+                      const total = tasksData.length;
+                      const done = tasksData.filter(t => t.status === 'done').length;
+                      const inProg = tasksData.filter(t => t.status === 'in_progress').length;
+                      const todo = tasksData.filter(t => t.status === 'todo').length;
+                      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+                      return (
+                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="text-base font-semibold text-gray-700">Task Progress</span>
+                            <span className="text-2xl font-bold text-red-600">{pct}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+                            <motion.div className="bg-red-600 h-3 rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, ease: 'easeOut' }} />
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs mt-2">
+                            <div className="bg-gray-50 rounded-lg p-2">
+                              <p className="font-bold text-gray-700 text-lg">{todo}</p>
+                              <p className="text-gray-500">To Do</p>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-2">
+                              <p className="font-bold text-blue-600 text-lg">{inProg}</p>
+                              <p className="text-blue-500">In Progress</p>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-2">
+                              <p className="font-bold text-green-600 text-lg">{done}</p>
+                              <p className="text-green-500">Done</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })()}
+
+                    {/* Team Size */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-base font-semibold text-gray-700">Team Size</span>
+                        <span className="text-2xl font-bold text-red-600">
+                          {projectData?.current_team_size || teamMembers?.length || 1}/{projectData?.team_size_limit || 5}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-3">
-                        <motion.div
-                          className="bg-red-600 h-3 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${((projectData.current_team_size || 1) / (projectData.team_size_limit || 5)) * 100}%` }}
-                          transition={{ duration: 1, ease: "easeOut" }}
-                        />
+                        <motion.div className="bg-red-600 h-3 rounded-full" initial={{ width: 0 }} animate={{ width: `${(((projectData?.current_team_size || teamMembers?.length || 1)) / (projectData?.team_size_limit || 5)) * 100}%` }} transition={{ duration: 1, ease: 'easeOut' }} />
                       </div>
-                      <p className="text-sm text-gray-600 mt-3">
-                        {projectData.team_size_limit - (projectData.current_team_size || 1)} spots remaining
-                      </p>
+                      <p className="text-sm text-gray-500 mt-2">{(projectData?.team_size_limit || 5) - (projectData?.current_team_size || teamMembers?.length || 1)} spots remaining</p>
                     </motion.div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 }}
-                      className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
-                    >
+                    {/* Messages */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
                       <div className="flex justify-between items-center">
-                        <span className="text-lg font-semibold text-gray-700">Status</span>
-                        <span className="px-4 py-2 bg-red-600 text-white font-bold rounded-xl capitalize">
-                          {projectData.status}
-                        </span>
+                        <span className="text-base font-semibold text-gray-700">Messages Sent</span>
+                        <span className="text-2xl font-bold text-red-600">{realtimeMessages.length}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Total group chat messages</p>
+                    </motion.div>
+
+                    {/* Files */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-base font-semibold text-gray-700">Files Shared</span>
+                        <span className="text-2xl font-bold text-red-600">{docFilesCount + repoFilesCount}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-center">
+                        <div className="bg-gray-50 rounded-lg p-2">
+                          <p className="font-bold text-gray-700 text-lg">{docFilesCount}</p>
+                          <p className="text-gray-500">Documents</p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-2">
+                          <p className="font-bold text-gray-700 text-lg">{repoFilesCount}</p>
+                          <p className="text-gray-500">Repository</p>
+                        </div>
                       </div>
                     </motion.div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
-                    >
+                    {/* Status & Category */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-base font-semibold text-gray-700">Status</span>
+                        <span className="px-4 py-1.5 bg-red-600 text-white font-bold rounded-xl capitalize text-sm">{projectData?.status || 'Active'}</span>
+                      </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-lg font-semibold text-gray-700">Category</span>
-                        <span className="px-4 py-2 bg-gray-100 text-gray-900 font-medium rounded-xl capitalize">
-                          {projectData.category}
-                        </span>
+                        <span className="text-base font-semibold text-gray-700">Category</span>
+                        <span className="px-4 py-1.5 bg-gray-100 text-gray-900 font-medium rounded-xl capitalize text-sm">{projectData?.category || '—'}</span>
                       </div>
                     </motion.div>
                   </div>
