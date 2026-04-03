@@ -27,6 +27,69 @@ const APPLICATIONS_COLLECTION = 'applications';
 const MESSAGES_COLLECTION = 'messages';
 const NOTIFICATIONS_COLLECTION = 'notifications';
 
+// ─── Direct Messages ─────────────────────────────────────────────────────────
+
+const DM_COLLECTION = 'direct_messages';
+
+/**
+ * Get a deterministic conversation ID for two users.
+ * Always sorted so uid1_uid2 === uid2_uid1.
+ */
+const getDmId = (uid1, uid2) => [uid1, uid2].sort().join('_');
+
+/**
+ * Send a direct message between two users.
+ */
+export const sendDirectMessage = async ({ toUserId, content }) => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Not authenticated');
+
+  const sender = await fetchUserProfile(uid);
+  const dmId = getDmId(uid, toUserId);
+
+  await addDoc(collection(db, DM_COLLECTION), {
+    dm_id: dmId,
+    sender_id: uid,
+    to_user_id: toUserId,
+    content,
+    is_read: false,
+    created_at: new Date().toISOString(),
+    sender: {
+      uid,
+      full_name: sender?.full_name || 'User',
+    },
+  });
+};
+
+/**
+ * Subscribe to real-time direct messages between two users.
+ * Returns an unsubscribe function.
+ */
+export const subscribeToDirectMessages = (myUid, theirUid, onMessages) => {
+  const dmId = getDmId(myUid, theirUid);
+  const q = query(
+    collection(db, DM_COLLECTION),
+    where('dm_id', '==', dmId),
+    orderBy('created_at', 'asc')
+  );
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => onMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    () => {
+      // Fallback without orderBy
+      const q2 = query(collection(db, DM_COLLECTION), where('dm_id', '==', dmId));
+      onSnapshot(q2, (snap) => {
+        const msgs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
+        onMessages(msgs);
+      });
+    }
+  );
+  return unsub;
+};
+
 // ─── Projects ────────────────────────────────────────────────────────────────
 
 /**

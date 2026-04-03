@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video, Phone, ArrowLeft, CheckSquare, TrendingUp, X, GitBranch, FileText, Sparkles, Crown, Clock, Image as ImageIcon, File, Download, Plus, UserMinus } from 'lucide-react';
+import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video, Phone, ArrowLeft, CheckSquare, TrendingUp, X, GitBranch, FileText, Sparkles, Crown, Clock, Image as ImageIcon, File, Download, Plus, UserMinus, ChevronLeft } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectAPI, authAPI, messageAPI, uploadAPI } from '../services/api';
@@ -11,6 +11,8 @@ import {
   sendProjectMessageDirect,
   subscribeToProjectMessages,
   removeMemberFromProject,
+  sendDirectMessage,
+  subscribeToDirectMessages,
 } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
@@ -37,6 +39,12 @@ const ProjectWorkspace = () => {
   const [realtimeMessages, setRealtimeMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [removingMemberId, setRemovingMemberId] = useState(null);
+  // Direct Message state
+  const [dmWith, setDmWith] = useState(null); // { id, name, avatar }
+  const [dmMessages, setDmMessages] = useState([]);
+  const [dmMessage, setDmMessage] = useState('');
+  const [dmSending, setDmSending] = useState(false);
+  const dmEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef(null);
@@ -122,6 +130,35 @@ const ProjectWorkspace = () => {
     });
     return unsub;
   }, [projectId]);
+
+  // Subscribe to DM messages when dmWith changes
+  const myUid = userData?.uid || userData?.id || auth.currentUser?.uid;
+  useEffect(() => {
+    if (!dmWith || !myUid) { setDmMessages([]); return; }
+    const unsub = subscribeToDirectMessages(myUid, dmWith.id, setDmMessages);
+    return unsub;
+  }, [dmWith?.id, myUid]);
+
+  // Auto-scroll DM to bottom
+  useEffect(() => {
+    if (dmEndRef.current && dmWith) {
+      dmEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [dmMessages, dmWith]);
+
+  const handleSendDm = async (e) => {
+    e.preventDefault();
+    if (!dmMessage.trim() || !dmWith || !myUid) return;
+    setDmSending(true);
+    try {
+      await sendDirectMessage({ toUserId: dmWith.id, content: dmMessage.trim() });
+      setDmMessage('');
+    } catch (err) {
+      console.error('DM send failed:', err);
+    } finally {
+      setDmSending(false);
+    }
+  };
 
   // Send message mutation — always writes directly to Firestore
   const sendMessageMutation = useMutation({
@@ -462,6 +499,22 @@ const ProjectWorkspace = () => {
                         </div>
                       </button>
 
+                      {/* DM button — chat with this member (not yourself) */}
+                      {member.id !== myUid && (
+                        <button
+                          type="button"
+                          onClick={() => { setDmWith(member); setShowMobileSidebar(false); }}
+                          title="Send direct message"
+                          className={`flex-shrink-0 p-2 rounded-lg transition-colors ${
+                            dmWith?.id === member.id
+                              ? 'bg-red-600 text-white'
+                              : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                          }`}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
+                      )}
+
                       {/* Remove button — only for owner viewing non-owner members */}
                       {!member.isOwner && projectData?.owner_id === (userData?.uid || userData?.id) && (
                         <button
@@ -530,7 +583,96 @@ const ProjectWorkspace = () => {
         </motion.div>
 
         {/* Chat Area */}
-        <div className="flex-1 min-w-0 flex flex-col bg-white">
+        <div className="flex-1 min-w-0 flex flex-col bg-white relative">
+
+          {/* ── Direct Message Panel (overlays group chat) ── */}
+          <AnimatePresence>
+            {dmWith && (
+              <motion.div
+                initial={{ opacity: 0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 40 }}
+                transition={{ duration: 0.2 }}
+                className="absolute inset-0 z-20 flex flex-col bg-white"
+              >
+                {/* DM Header */}
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm">
+                  <button
+                    onClick={() => setDmWith(null)}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <ChevronLeft className="h-5 w-5 text-gray-600" />
+                  </button>
+                  <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold text-white ${dmWith.isOwner ? 'bg-red-600' : 'bg-gray-600'}`}>
+                    {dmWith.avatar}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 text-sm">{dmWith.name}</p>
+                    <p className="text-xs text-gray-500">Direct Message</p>
+                  </div>
+                </div>
+
+                {/* DM Messages */}
+                <div className="flex-1 overflow-y-auto p-4 bg-[#f3f3f3] space-y-3">
+                  {dmMessages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="h-16 w-16 mx-auto mb-3 rounded-2xl bg-red-100 flex items-center justify-center">
+                          <MessageSquare className="h-8 w-8 text-red-600" />
+                        </div>
+                        <p className="text-gray-500 text-sm">Start a private conversation with {dmWith.name}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    dmMessages.map((msg) => {
+                      const isOwn = msg.sender_id === myUid;
+                      return (
+                        <div key={msg.id} className={`flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                          {!isOwn && (
+                            <div className="h-7 w-7 rounded-full bg-gray-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                              {dmWith.avatar}
+                            </div>
+                          )}
+                          <div className={`max-w-[70%] rounded-2xl px-4 py-2 shadow-sm text-sm leading-relaxed break-words ${
+                            isOwn ? 'bg-red-600 text-white rounded-br-md' : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
+                          }`}>
+                            <p>{msg.content}</p>
+                            <p className={`text-xs mt-1 ${isOwn ? 'text-red-200' : 'text-gray-400'}`}>
+                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={dmEndRef} />
+                </div>
+
+                {/* DM Input */}
+                <div className="p-3 border-t border-gray-200 bg-white pb-[max(12px,env(safe-area-inset-bottom))]">
+                  <form onSubmit={handleSendDm} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={dmMessage}
+                      onChange={(e) => setDmMessage(e.target.value)}
+                      placeholder={`Message ${dmWith.name}...`}
+                      className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                    />
+                    <motion.button
+                      type="submit"
+                      disabled={dmSending || !dmMessage.trim()}
+                      className="p-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <Send className="h-4 w-4" />
+                    </motion.button>
+                  </form>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Chat Messages */}
           <div 
             ref={chatContainerRef}
