@@ -36,8 +36,8 @@ const Header = () => {
           <Link to="/" className="flex items-center space-x-2 md:space-x-3 group flex-shrink-0">
             <motion.div
               className="relative"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+              whileHover={{ rotate: 360 }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
             >
               <div className="absolute inset-0 bg-red-600 rounded-xl blur-lg opacity-30 group-hover:opacity-50 transition-opacity"></div>
               <div className="relative bg-red-600 p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-lg">
