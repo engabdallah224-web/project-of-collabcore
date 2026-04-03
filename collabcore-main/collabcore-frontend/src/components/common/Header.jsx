@@ -1,22 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, LogOut, User, Bell, Sparkles, Menu, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
-import { fetchUnreadNotificationsCount } from '../../services/firestoreService';
+import { subscribeToNotifications } from '../../services/firestoreService';
 
 const Header = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const uid = user?.uid || user?.id || null;
 
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['unread-notifications-count', uid],
-    queryFn: () => fetchUnreadNotificationsCount(uid),
-    enabled: !!uid,
-    refetchInterval: 15000,
-  });
+  // Real-time notification badge — updates instantly when a new notification arrives
+  useEffect(() => {
+    if (!uid) { setUnreadCount(0); return; }
+    const unsub = subscribeToNotifications(uid, (items) => {
+      setUnreadCount(items.filter((n) => !n.is_read).length);
+    });
+    return unsub;
+  }, [uid]);
 
   const handleLogout = async () => {
     await logout();

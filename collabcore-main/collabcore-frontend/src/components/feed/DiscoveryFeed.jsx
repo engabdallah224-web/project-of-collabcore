@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, MapPin, Send, X, CheckCircle, Heart, Bookmark, TrendingUp, Star, Filter } from 'lucide-react';
+import { Clock, MapPin, Send, X, CheckCircle, Heart, Bookmark, TrendingUp, Filter } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -170,16 +170,19 @@ const DiscoveryFeed = ({ projects }) => {
     }
   };
 
-  const getMatchScore = () => {
-    // Mock match score calculation
-    return Math.floor(Math.random() * 30) + 70;
+  const getMatchScore = (project) => {
+    const userSkills = (user?.skills || []).map((s) => s.toLowerCase());
+    const required = (project.required_skills || []).map((s) => s.toLowerCase());
+    if (!userSkills.length || !required.length) return null;
+    const matches = required.filter((s) => userSkills.includes(s)).length;
+    return Math.round((matches / required.length) * 100);
   };
 
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {projects.map((project, index) => {
-          const matchScore = getMatchScore();
+          const matchScore = getMatchScore(project);
           const isLiked = likedProjects.has(project.id);
           const isSaved = savedProjects.has(project.id);
           const spotsLeft = project.team_size_limit - project.current_team_size;
@@ -196,13 +199,15 @@ const DiscoveryFeed = ({ projects }) => {
               {/* Gradient Background Overlay */}
               <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 via-white to-blue-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
-              {/* Top Bar with Match Score */}
+              {/* Top Bar */}
               <div className="relative bg-gradient-to-r from-gray-900 via-black to-gray-800 px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1">
-                    <TrendingUp className="h-4 w-4 text-emerald-400" />
-                    <span className="text-white font-bold text-sm">{matchScore}% Match</span>
-                  </div>
+                  {matchScore !== null && (
+                    <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1">
+                      <TrendingUp className="h-4 w-4 text-emerald-400" />
+                      <span className="text-white font-bold text-sm">{matchScore}% Match</span>
+                    </div>
+                  )}
                   <motion.span
                     className={`px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm ${
                       project.status === 'recruiting'
@@ -260,11 +265,9 @@ const DiscoveryFeed = ({ projects }) => {
                         {project.owner?.university}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-full">
-                          <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                          <span className="text-xs text-yellow-700 font-semibold">4.8</span>
-                        </div>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">12 projects</span>
+                        {project.owner?.university && (
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{project.owner.university}</span>
+                        )}
                       </div>
                     </div>
                   </div>
