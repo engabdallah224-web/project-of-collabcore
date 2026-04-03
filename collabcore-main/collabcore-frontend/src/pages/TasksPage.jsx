@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, Circle, Clock, AlertCircle, Plus, Filter, User, Calendar, Tag, Trash2, Edit2, MoreHorizontal, Users, Target, Zap, ChevronDown, ArrowLeft, Search, X, Video, Phone, ExternalLink } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectAPI, authAPI, meetingAPI } from '../services/api';
+import { auth } from '../config/firebase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import {
+  fetchProjectById,
+  fetchProjectApplications,
+  createTaskInFirestore,
+  subscribeToProjectTasks,
+  updateTaskInFirestore,
+  deleteTaskFromFirestore,
+  fetchUserProfile,
+} from '../services/firestoreService';
 
 // Task Card Component for Kanban Board
 const TaskCard = ({ task, onStatusChange, onDelete }) => {
@@ -123,12 +131,9 @@ const TaskListItem = ({ task, onStatusChange, onDelete }) => {
 
 const TasksPage = () => {
   const { projectId } = useParams();
-  const queryClient = useQueryClient();
-  
-  // State declarations (always called)
+
   const [selectedStatus, setSelectedStatus] = useState('all');
-  const [viewMode, setViewMode] = useState('kanban'); // 'kanban', 'list'
-  const [filterMode, setFilterMode] = useState('all'); // 'all', 'my_tasks', 'created_by_me'
+  const [viewMode, setViewMode] = useState('kanban');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newTask, setNewTask] = useState({
@@ -138,151 +143,96 @@ const TasksPage = () => {
     status: 'todo',
     due_date: '',
     assigned_to: '',
-    tags: []
   });
+  const [creating, setCreating] = useState(false);
 
-  // ALL hooks must be called before any conditional returns
-  // Fetch current user (always called first)
-  const { data: userData } = useQuery({
-    queryKey: ['current-user'],
-    queryFn: async () => {
-      const response = await authAPI.getMe();
-      return response.data.user;
-    }
-  });
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [projectData, setProjectData] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [myUid, setMyUid] = useState(null);
 
-  // Fetch project details (always called)
-  const { data: projectData } = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: async () => {
-      const response = await projectAPI.getProject(projectId);
-      return response.data.project;
-    },
-    enabled: !!projectId
-  });
+  // Get current user uid
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (uid) { setMyUid(uid); return; }
+    const unsub = auth.onAuthStateChanged((u) => { if (u) setMyUid(u.uid); });
+    return unsub;
+  }, []);
 
-  // Fetch tasks (always called)
-  const { data: tasksData, isLoading } = useQuery({
-    queryKey: ['project-tasks', projectId, selectedStatus],
-    queryFn: async () => {
-      const params = selectedStatus !== 'all' ? { status: selectedStatus } : {};
-      const response = await projectAPI.getTasks(projectId, params);
-      return response.data.tasks;
-    },
-    enabled: !!projectId
-  });
+  // Load project data + team members
+  useEffect(() => {
+    if (!projectId) return;
+    fetchProjectById(projectId).then((p) => setProjectData(p)).catch(() => {});
+    fetchProjectApplications(projectId).then((apps) => {
+      const accepted = apps.filter((a) => a.status === 'accepted');
+      setTeamMembers(accepted.map((a) => ({ id: a.user_id, name: a.user?.full_name || 'Member' })));
+    }).catch(() => {});
+  }, [projectId]);
 
-  // Fetch team members (always called)
-  const { data: teamMembers } = useQuery({
-    queryKey: ['project-team', projectId],
-    queryFn: async () => {
-      const response = await projectAPI.getProjectApplications(projectId);
-      const accepted = response.data.applications.filter(app => app.status === 'accepted');
-      return accepted.map(app => ({ id: app.user_id, name: app.user.full_name }));
-    },
-    enabled: !!projectId
-  });
+  // Subscribe to tasks in real-time
+  useEffect(() => {
+    if (!projectId) return;
+    setTasksLoading(true);
+    const unsub = subscribeToProjectTasks(projectId, (t) => {
+      setTasks(t);
+      setTasksLoading(false);
+    });
+    return unsub;
+  }, [projectId]);
 
-  // Fetch scheduled meetings
-  const { data: meetingsData } = useQuery({
-    queryKey: ['project-meetings', projectId],
-    queryFn: async () => {
-      const response = await meetingAPI.getMeetings(projectId);
-      return response.data.meetings;
-    },
-    enabled: !!projectId
-  });
-
-  // Create task mutation
-  const createTaskMutation = useMutation({
-    mutationFn: async (taskData) => {
-      const response = await projectAPI.createTask(projectId, taskData);
-      return response.data.task;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['project-tasks', projectId]);
-      setShowCreateModal(false);
-      setNewTask({
-        title: '',
-        description: '',
-        priority: 'medium',
-        status: 'todo',
-        due_date: '',
-        assigned_to: '',
-        tags: []
-      });
-    }
-  });
-
-  // Update task mutation
-  const updateTaskMutation = useMutation({
-    mutationFn: async ({ taskId, data }) => {
-      const response = await projectAPI.updateTask(taskId, data);
-      return response.data.task;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['project-tasks', projectId]);
-    }
-  });
-
-  // Delete task mutation
-  const deleteTaskMutation = useMutation({
-    mutationFn: async (taskId) => {
-      await projectAPI.deleteTask(taskId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['project-tasks', projectId]);
-    }
-  });
-
-  const handleCreateTask = (e) => {
+  const handleCreateTask = async (e) => {
     e.preventDefault();
-    if (newTask.title.trim()) {
-      createTaskMutation.mutate({
+    if (!newTask.title.trim() || creating) return;
+    setCreating(true);
+    try {
+      await createTaskInFirestore(projectId, {
         ...newTask,
-        project_id: projectId,
-        tags: newTask.tags.filter(t => t.trim())
+        assigned_to: newTask.assigned_to || null,
+        due_date: newTask.due_date || null,
       });
+      setShowCreateModal(false);
+      setNewTask({ title: '', description: '', priority: 'medium', status: 'todo', due_date: '', assigned_to: '' });
+    } catch (err) {
+      console.error('Create task error:', err);
+    } finally {
+      setCreating(false);
     }
   };
 
   const handleStatusChange = (taskId, newStatus) => {
-    updateTaskMutation.mutate({ taskId, data: { status: newStatus } });
+    updateTaskInFirestore(taskId, { status: newStatus }).catch(() => {});
+  };
+
+  const handleDelete = (taskId) => {
+    deleteTaskFromFirestore(taskId).catch(() => {});
   };
 
   // Filter tasks based on view mode and user role (always called)
-  const filteredTasks = React.useMemo(() => {
-    if (!tasksData || !userData) return [];
-
-    let tasks = tasksData;
+  const filteredTasks = useMemo(() => {
+    let taskList = tasks;
 
     // Apply search filter
     if (searchQuery.trim()) {
-      tasks = tasks.filter(task =>
+      taskList = taskList.filter(task =>
         task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         task.description?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
-    const isOwner = projectData?.owner_id === userData.uid;
+    const isOwner = projectData?.owner_id === myUid;
 
     // Owner sees all tasks
-    if (isOwner) {
-      return tasks;
-    }
+    if (isOwner) return taskList;
 
-    // Collaborators see:
-    // - Tasks assigned to them
-    // - Tasks they created
-    return tasks.filter(task =>
-      task.assigned_to === userData.uid || task.created_by === userData.uid
+    // Collaborators see tasks assigned to them or created by them
+    return taskList.filter(task =>
+      task.assigned_to === myUid || task.created_by === myUid
     );
-  }, [tasksData, userData, projectData, searchQuery]);
+  }, [tasks, myUid, projectData, searchQuery]);
 
   // Calculate task counts
-  const taskCounts = React.useMemo(() => {
-    if (!filteredTasks) return { total: 0, todo: 0, in_progress: 0, done: 0 };
-
+  const taskCounts = useMemo(() => {
     return {
       total: filteredTasks.length,
       todo: filteredTasks.filter(t => t.status === 'todo').length,
@@ -308,7 +258,7 @@ const TasksPage = () => {
   };
 
   // Conditional render AFTER all hooks
-  if (isLoading) {
+  if (tasksLoading) {
     return (
       <div className="min-h-screen bg-[#f3f3f3] flex items-center justify-center">
         <LoadingSpinner />
@@ -336,7 +286,7 @@ const TasksPage = () => {
                 {projectData?.title || 'Project'} Board
               </h1>
               <p className="text-sm text-gray-500">
-                {projectData?.owner_id === userData?.uid
+                {projectData?.owner_id === myUid
                   ? `${taskCounts.total} tasks total`
                   : `${filteredTasks.length} tasks visible to you`}
               </p>
@@ -424,68 +374,6 @@ const TasksPage = () => {
         </div>
       </div>
 
-      {/* Scheduled Meetings Section */}
-      {meetingsData && meetingsData.length > 0 && (
-        <div className="px-6 py-4 bg-white border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center space-x-2">
-            <Calendar className="h-4 w-4 text-red-600" />
-            <span>Upcoming Meetings</span>
-            <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">
-              {meetingsData.filter(m => m.meeting_status === 'scheduled').length}
-            </span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {meetingsData
-              .filter(m => m.meeting_status === 'scheduled')
-              .slice(0, 3)
-              .map((meeting) => (
-                <motion.div
-                  key={meeting.id}
-                  className="p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-all"
-                  whileHover={{ scale: 1.02 }}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      {meeting.meeting_type === 'video' || meeting.meeting_type === 'standup' ? (
-                        <Video className="h-4 w-4 text-red-600" />
-                      ) : (
-                        <Phone className="h-4 w-4 text-gray-700" />
-                      )}
-                      <h4 className="font-semibold text-gray-900 text-sm">{meeting.title}</h4>
-                    </div>
-                  </div>
-                  <div className="space-y-1 text-xs text-gray-600 mb-2">
-                    <div className="flex items-center space-x-1">
-                      <Clock className="h-3 w-3" />
-                      <span>{new Date(meeting.scheduled_at).toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Users className="h-3 w-3" />
-                      <span>{meeting.participants?.length || 0} participants</span>
-                    </div>
-                  </div>
-                  {meeting.meeting_url && (
-                    <a
-                      href={meeting.meeting_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center space-x-1 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-xs font-medium"
-                    >
-                      <span>Join Meeting</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </motion.div>
-              ))}
-          </div>
-          {meetingsData.filter(m => m.meeting_status === 'scheduled').length > 3 && (
-            <p className="text-xs text-gray-500 mt-3 text-center">
-              {meetingsData.filter(m => m.meeting_status === 'scheduled').length - 3} more meetings scheduled
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Main Content */}
       <div className="flex-1 p-6">
         {viewMode === 'kanban' ? (
@@ -505,7 +393,7 @@ const TasksPage = () => {
               </div>
               <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
                 {filteredTasks.filter(task => task.status === 'todo').map(task => (
-                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={deleteTaskMutation.mutate} />
+                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
                 ))}
               </div>
             </div>
@@ -524,7 +412,7 @@ const TasksPage = () => {
               </div>
               <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
                 {filteredTasks.filter(task => task.status === 'in_progress').map(task => (
-                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={deleteTaskMutation.mutate} />
+                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
                 ))}
               </div>
             </div>
@@ -543,7 +431,7 @@ const TasksPage = () => {
               </div>
               <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
                 {filteredTasks.filter(task => task.status === 'done').map(task => (
-                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={deleteTaskMutation.mutate} />
+                  <TaskCard key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
                 ))}
               </div>
             </div>
@@ -556,7 +444,7 @@ const TasksPage = () => {
             </div>
             <div className="divide-y divide-gray-200">
               {filteredTasks.map(task => (
-                <TaskListItem key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={deleteTaskMutation.mutate} />
+                <TaskListItem key={task.id} task={task} onStatusChange={handleStatusChange} onDelete={handleDelete} />
               ))}
             </div>
           </div>
@@ -685,10 +573,10 @@ const TasksPage = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={createTaskMutation.isPending}
+                    disabled={creating}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
                   >
-                    {createTaskMutation.isPending ? 'Creating...' : 'Create Task'}
+                    {creating ? 'Creating...' : 'Create Task'}
                   </button>
                 </div>
               </form>

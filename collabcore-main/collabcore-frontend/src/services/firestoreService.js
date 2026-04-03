@@ -948,4 +948,61 @@ export const fetchProjectLikeCounts = async (projectIds) => {
   return counts;
 };
 
+// ─── Tasks ────────────────────────────────────────────────────────────────────
+
+const TASKS_COLLECTION = 'tasks';
+
+export const createTaskInFirestore = async (projectId, taskData) => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Not authenticated');
+  const now = new Date().toISOString();
+  const ref = await addDoc(collection(db, TASKS_COLLECTION), {
+    project_id: projectId,
+    title: taskData.title,
+    description: taskData.description || '',
+    priority: taskData.priority || 'medium',
+    status: taskData.status || 'todo',
+    due_date: taskData.due_date || null,
+    assigned_to: taskData.assigned_to || null,
+    created_by: uid,
+    created_at: now,
+    updated_at: now,
+  });
+  return { id: ref.id };
+};
+
+export const subscribeToProjectTasks = (projectId, onTasks) => {
+  const q = query(
+    collection(db, TASKS_COLLECTION),
+    where('project_id', '==', projectId),
+    orderBy('created_at', 'asc')
+  );
+  const unsub = onSnapshot(
+    q,
+    (snap) => onTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    () => {
+      // Fallback without orderBy
+      const q2 = query(collection(db, TASKS_COLLECTION), where('project_id', '==', projectId));
+      onSnapshot(q2, (snap) => {
+        const tasks = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
+        onTasks(tasks);
+      });
+    }
+  );
+  return unsub;
+};
+
+export const updateTaskInFirestore = async (taskId, data) => {
+  await updateDoc(doc(db, TASKS_COLLECTION, taskId), {
+    ...data,
+    updated_at: new Date().toISOString(),
+  });
+};
+
+export const deleteTaskFromFirestore = async (taskId) => {
+  await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
+};
+
 
