@@ -13,6 +13,7 @@ import {
   removeMemberFromProject,
   sendDirectMessage,
   subscribeToDirectMessages,
+  subscribeToProjectTasks,
 } from '../services/firestoreService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { User } from '../models';
@@ -39,6 +40,7 @@ const ProjectWorkspace = () => {
   const [realtimeMessages, setRealtimeMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [removingMemberId, setRemovingMemberId] = useState(null);
+  const [tasksData, setTasksData] = useState([]);
   // Direct Message state
   const [dmWith, setDmWith] = useState(null); // { id, name, avatar }
   const [dmMessages, setDmMessages] = useState([]);
@@ -106,19 +108,12 @@ const ProjectWorkspace = () => {
     enabled: !!projectData?.owner_id && !projectData?.owner?.full_name,
   });
 
-  // Fetch tasks
-  const { data: tasksData } = useQuery({
-    queryKey: ['project-tasks', projectId],
-    queryFn: async () => {
-      try {
-        const response = await projectAPI.getTasks(projectId);
-        return response.data.tasks || [];
-      } catch (error) {
-        return [];
-      }
-    },
-    enabled: !!projectId
-  });
+  // Fetch tasks via Firestore (real-time)
+  useEffect(() => {
+    if (!projectId) return;
+    const unsub = subscribeToProjectTasks(projectId, setTasksData);
+    return unsub;
+  }, [projectId]);
 
   // Real-time messages via Firestore onSnapshot
   useEffect(() => {
